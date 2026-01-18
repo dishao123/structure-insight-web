@@ -54,6 +54,8 @@ export function buildASCIITree(treeData: FileNode[], rootName: string, showStats
                 displayName += " (错误)";
             } else if (showStats && !node.isDirectory && node.status === 'processed' && typeof node.chars === 'number') {
                 displayName += ` (${node.chars} 字符)`;
+            } else if (node.status === 'skipped' && !node.isDirectory) {
+                displayName += " (已跳过)";
             }
 
             structure += `${prefix}${connector}${displayName}\n`;
@@ -170,7 +172,7 @@ export async function processDroppedItems(items: DataTransferItemList, onProgres
     return allFiles;
 }
 
-export async function processFiles(files: File[], onProgress: (msg: string) => void, extractContent: boolean, signal: AbortSignal): Promise<ProcessedFiles> {
+export async function processFiles(files: File[], onProgress: (msg: string) => void, extractContent: boolean, maxCharsThreshold: number, signal: AbortSignal): Promise<ProcessedFiles> {
     const fileContents: FileContent[] = [];
     const nodeMap = new Map<string, FileNode>();
     const roots: FileNode[] = [];
@@ -258,10 +260,12 @@ export async function processFiles(files: File[], onProgress: (msg: string) => v
         
         const extension = `.${file.name.split('.').pop()?.toLowerCase()}`;
         const isIgnored = IGNORED_EXTENSIONS.has(extension);
-        const isTooLarge = file.size > 5 * 1024 * 1024; // 5MB limit
+        const isTooLarge = file.size > maxCharsThreshold;
 
         if (!extractContent || isIgnored || isTooLarge) {
             fileNode.status = 'skipped';
+            // We still want basic stats even if skipped (size based on file object)
+            fileNode.chars = file.size;
         } else {
             try {
                 const content = await readFileContent(file);

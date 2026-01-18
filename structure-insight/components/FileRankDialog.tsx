@@ -9,9 +9,11 @@ interface FileRankDialogProps {
     files: FileContent[];
     onSelectFile: (path: string) => void;
     onCopyPath: (path: string) => void;
+    onDeleteFile: (path: string) => void;
+    onToggleExclude: (path: string) => void;
 }
 
-const FileRankDialog: React.FC<FileRankDialogProps> = ({ isOpen, onClose, files, onSelectFile, onCopyPath }) => {
+const FileRankDialog: React.FC<FileRankDialogProps> = ({ isOpen, onClose, files, onSelectFile, onCopyPath, onDeleteFile, onToggleExclude }) => {
     // Prevent interaction with background and handle Esc
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -28,6 +30,17 @@ const FileRankDialog: React.FC<FileRankDialogProps> = ({ isOpen, onClose, files,
     }, [files]);
     
     const maxChars = sortedFiles.length > 0 ? sortedFiles[0].stats.chars : 0;
+
+    const ActionButton = ({ icon, label, onClick, className = "", danger = false }: { icon: string, label: string, onClick: (e: React.MouseEvent) => void, className?: string, danger?: boolean }) => (
+        <button
+            onClick={onClick}
+            className={`flex items-center space-x-1.5 px-2 py-1 rounded text-xs bg-white dark:bg-dark-bg border border-light-border dark:border-dark-border shadow-sm text-light-subtle-text transition-all hover:border-primary hover:text-primary ${danger ? 'hover:border-red-500 hover:text-red-500' : ''} ${className}`}
+            title={label}
+        >
+            <i className={`fa-solid ${icon}`}></i>
+            <span className="hidden sm:inline">{label}</span>
+        </button>
+    );
 
     return (
         <motion.div
@@ -68,50 +81,71 @@ const FileRankDialog: React.FC<FileRankDialogProps> = ({ isOpen, onClose, files,
                     ) : (
                         sortedFiles.map((file, index) => {
                              const percentage = maxChars > 0 ? (file.stats.chars / maxChars) * 100 : 0;
+                             const isExcluded = !!file.excluded;
+                             
                              return (
-                                <button
+                                <div
                                     key={file.path}
-                                    onClick={() => { onSelectFile(file.path); onClose(); }}
-                                    className="relative w-full group flex items-center p-3 rounded-lg border border-transparent hover:border-light-border dark:hover:border-dark-border hover:bg-light-bg dark:hover:bg-dark-bg transition-all text-left overflow-hidden"
+                                    className={`relative group rounded-lg border border-transparent hover:border-light-border dark:hover:border-dark-border hover:bg-light-bg dark:hover:bg-dark-bg transition-all overflow-hidden ${isExcluded ? 'opacity-60 italic' : ''}`}
                                 >
-                                    {/* Progress Bar Background */}
-                                    <div 
-                                        className="absolute left-0 top-0 bottom-0 bg-primary/5 dark:bg-primary/10 transition-all duration-500 z-0"
-                                        style={{ width: `${percentage}%` }}
-                                    />
-                                    
-                                    {/* Content */}
-                                    <div className="relative z-10 flex items-center w-full gap-4">
-                                        <span className={`font-mono text-sm w-8 text-center shrink-0 ${index < 3 ? 'text-primary font-bold' : 'text-light-subtle-text dark:text-dark-subtle-text'}`}>
-                                            #{index + 1}
-                                        </span>
+                                    <button
+                                        onClick={() => { onSelectFile(file.path); onClose(); }}
+                                        className="relative w-full flex items-center p-3 text-left overflow-hidden z-10"
+                                    >
+                                        {/* Progress Bar Background */}
+                                        <div 
+                                            className="absolute left-0 top-0 bottom-0 bg-primary/5 dark:bg-primary/10 transition-all duration-500 -z-10"
+                                            style={{ width: `${percentage}%` }}
+                                        />
                                         
-                                        <div className="flex-1 min-w-0 flex items-center gap-2">
-                                            <div className="text-sm font-medium text-light-text dark:text-dark-text truncate" title={file.path}>
-                                                {file.path}
+                                        {/* Content */}
+                                        <div className="flex items-center w-full gap-4">
+                                            <span className={`font-mono text-sm w-8 text-center shrink-0 ${index < 3 ? 'text-primary font-bold' : 'text-light-subtle-text dark:text-dark-subtle-text'}`}>
+                                                #{index + 1}
+                                            </span>
+                                            
+                                            <div className="flex-1 min-w-0">
+                                                <div className={`text-sm font-medium text-light-text dark:text-dark-text truncate ${isExcluded ? 'line-through' : ''}`} title={file.path}>
+                                                    {file.path}
+                                                </div>
+                                                <div className="text-xs text-light-subtle-text dark:text-dark-subtle-text truncate opacity-80">
+                                                    {file.language}
+                                                </div>
                                             </div>
-                                            <div 
-                                                onClick={(e) => { e.stopPropagation(); onCopyPath(file.path); }}
-                                                className="w-6 h-6 rounded flex items-center justify-center text-light-subtle-text hover:text-primary hover:bg-light-border dark:hover:bg-dark-border/50 transition-colors opacity-0 group-hover:opacity-100"
-                                                title="复制路径"
-                                            >
-                                                <i className="fa-regular fa-copy text-xs"></i>
-                                            </div>
-                                            <div className="text-xs text-light-subtle-text dark:text-dark-subtle-text truncate opacity-80 flex-1">
-                                                {file.language}
+
+                                            <div className="text-right shrink-0">
+                                                <div className="text-sm font-bold text-primary tabular-nums">
+                                                    {file.stats.chars.toLocaleString()} <span className="text-xs font-normal opacity-70">字符</span>
+                                                </div>
+                                                <div className="text-xs text-light-subtle-text dark:text-dark-subtle-text tabular-nums opacity-70">
+                                                    {file.stats.lines.toLocaleString()} 行
+                                                </div>
                                             </div>
                                         </div>
-
-                                        <div className="text-right shrink-0">
-                                            <div className="text-sm font-bold text-primary tabular-nums">
-                                                {file.stats.chars.toLocaleString()} <span className="text-xs font-normal opacity-70">字符</span>
-                                            </div>
-                                            <div className="text-xs text-light-subtle-text dark:text-dark-subtle-text tabular-nums opacity-70">
-                                                {file.stats.lines.toLocaleString()} 行
-                                            </div>
+                                    </button>
+                                    
+                                    {/* Action Toolbar */}
+                                    <div className="relative z-20 px-3 pb-2 flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity translate-y-1 group-hover:translate-y-0 duration-200">
+                                        <div className="ml-12 flex items-center space-x-2">
+                                            <ActionButton 
+                                                icon="fa-copy" 
+                                                label="路径" 
+                                                onClick={(e) => { e.stopPropagation(); onCopyPath(file.path); }} 
+                                            />
+                                            <ActionButton 
+                                                icon={isExcluded ? "fa-eye" : "fa-eye-slash"} 
+                                                label={isExcluded ? "包含" : "排除"} 
+                                                onClick={(e) => { e.stopPropagation(); onToggleExclude(file.path); }} 
+                                            />
+                                            <ActionButton 
+                                                icon="fa-trash-can" 
+                                                label="删除" 
+                                                onClick={(e) => { e.stopPropagation(); onDeleteFile(file.path); }} 
+                                                danger 
+                                            />
                                         </div>
                                     </div>
-                                </button>
+                                </div>
                              );
                         })
                     )}

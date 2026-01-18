@@ -33,6 +33,7 @@ export const useAppLogic = (
     const [extractContent, setExtractContent] = usePersistentState('extractContent', true);
     const [fontSize, setFontSize] = usePersistentState('fontSize', 14);
     const [showCharCount, setShowCharCount] = usePersistentState('showCharCount', false);
+    const [maxCharsThreshold, setMaxCharsThreshold] = usePersistentState('maxCharsThreshold', 1000000); // Default 1MB (1,000,000 characters approx)
 
     // --- Core Data & Selection State ---
     const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(null);
@@ -60,7 +61,7 @@ export const useAppLogic = (
       processedData, setProcessedData, lastProcessedFiles, setLastProcessedFiles, handleProcessing,
       handleFileSelect, handleDrop, handleRefresh, handleCancel, abortControllerRef
     } = useFileProcessing({
-        extractContent, setIsLoading, setProgressMessage, 
+        extractContent, maxCharsThreshold, setIsLoading, setProgressMessage, 
         setMobileView, handleShowToast, isMobile, setSelectedFilePath, setActiveView
     });
 
@@ -323,7 +324,7 @@ export const useAppLogic = (
         state: {
             processedData, isLoading, isDragging, progressMessage, isSettingsOpen, toastMessage, isOnline,
             editingPath, markdownPreviewPaths, confirmation,
-            isDark, panelWidth, extractContent, fontSize, showCharCount,
+            isDark, panelWidth, extractContent, fontSize, showCharCount, maxCharsThreshold,
             lastProcessedFiles, mobileView, stats,
             isSearchOpen, isFileRankOpen, searchResults, activeResultIndex, isMobile, isAiChatOpen,
             selectedFilePath, selectedFile, activeView,
@@ -342,7 +343,7 @@ export const useAppLogic = (
             handleToggleExclude,
         },
         settings: {
-            setIsDark, setExtractContent, setFontSize, handleClearCache, setShowCharCount
+            setIsDark, setExtractContent, setFontSize, handleClearCache, setShowCharCount, setMaxCharsThreshold
         },
     };
 };

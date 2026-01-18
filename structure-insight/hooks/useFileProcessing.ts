@@ -6,6 +6,7 @@ import { usePersistentState } from './usePersistentState';
 
 interface FileProcessingProps {
     extractContent: boolean;
+    maxCharsThreshold: number;
     setIsLoading: (loading: boolean) => void;
     setProgressMessage: (message: string) => void;
     setMobileView: (view: 'tree' | 'editor') => void;
@@ -17,6 +18,7 @@ interface FileProcessingProps {
 
 export const useFileProcessing = ({
     extractContent,
+    maxCharsThreshold,
     setIsLoading,
     setProgressMessage,
     setMobileView,
@@ -43,7 +45,7 @@ export const useFileProcessing = ({
 
         setIsLoading(true);
         try {
-            const data = await processFiles(files, (msg) => setProgressMessage(msg), extractContent, signal);
+            const data = await processFiles(files, (msg) => setProgressMessage(msg), extractContent, maxCharsThreshold, signal);
             setProcessedData(data);
             setLastProcessedFiles(files);
             if (isMobile) setMobileView('editor');

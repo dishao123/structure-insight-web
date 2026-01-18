@@ -14,11 +14,13 @@ interface SettingsDialogProps {
     onClearCache: () => void;
     showCharCount: boolean;
     onToggleShowCharCount: () => void;
+    maxCharsThreshold: number;
+    onSetMaxCharsThreshold: (val: number) => void;
 }
 
 const SettingsDialog: React.FC<SettingsDialogProps> = ({
     isOpen, onClose, isDarkTheme, onToggleTheme, extractContent, onToggleExtractContent, fontSize, onSetFontSize, onClearCache,
-    showCharCount, onToggleShowCharCount
+    showCharCount, onToggleShowCharCount, maxCharsThreshold, onSetMaxCharsThreshold
 }) => {
     const dialogRef = React.useRef<HTMLDivElement>(null);
     const [stars, setStars] = React.useState<number | null>(null);
@@ -45,7 +47,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
     
     if (!isOpen) return null;
     
-    const appVersion = "5.1.0"; 
+    const appVersion = "5.2.1"; 
 
     // Helper components for consistency
     const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -93,7 +95,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto space-y-8">
+                <div className="p-6 overflow-y-auto space-y-8 no-scrollbar">
                     
                     {/* Appearance Section */}
                     <div>
@@ -126,20 +128,22 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 <Switch id="char-count-toggle" checked={showCharCount} onChange={onToggleShowCharCount} />
                             </div>
 
-                            <div className="flex items-center justify-between p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
-                                <div className="flex items-center space-x-3">
-                                    <div className="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 shadow-sm">
-                                        <i className="fa-solid fa-font"></i>
-                                    </div>
-                                    <div className="flex flex-col">
-                                         <label htmlFor="font-size-slider" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
-                                            字体大小
-                                        </label>
-                                        <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">{fontSize}px</span>
+                            <div className="flex flex-col p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 shadow-sm">
+                                            <i className="fa-solid fa-font"></i>
+                                        </div>
+                                        <div className="flex flex-col">
+                                             <label htmlFor="font-size-slider" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
+                                                字体大小
+                                            </label>
+                                            <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">{fontSize}px</span>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3 w-32">
-                                     <span className="text-xs text-light-subtle-text">A</span>
+                                <div className="px-12 flex items-center gap-4">
+                                     <span className="text-xs text-light-subtle-text shrink-0">A</span>
                                      <input
                                         type="range"
                                         id="font-size-slider"
@@ -150,7 +154,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                         onChange={(e) => onSetFontSize(Number(e.target.value))}
                                         className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary"
                                     />
-                                    <span className="text-lg text-light-text dark:text-dark-text">A</span>
+                                    <span className="text-lg text-light-text dark:text-dark-text shrink-0">A</span>
                                 </div>
                             </div>
                         </div>
@@ -175,6 +179,38 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     </div>
                                 </div>
                                 <Switch id="extract-toggle" checked={extractContent} onChange={onToggleExtractContent} />
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-9 h-9 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400 shadow-sm">
+                                        <i className="fa-solid fa-weight-hanging"></i>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label htmlFor="max-chars-input" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
+                                            自动跳过大文件
+                                        </label>
+                                        <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">
+                                            超过此限制的文件不提取内容
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            id="max-chars-input"
+                                            value={Math.round(maxCharsThreshold / 1024)}
+                                            onChange={(e) => {
+                                                const val = parseInt(e.target.value);
+                                                onSetMaxCharsThreshold(isNaN(val) ? 0 : val * 1024);
+                                            }}
+                                            className="w-24 px-3 py-1.5 text-sm font-mono font-bold text-right bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-primary"
+                                            min="0"
+                                        />
+                                    </div>
+                                    <span className="text-xs font-bold text-light-subtle-text dark:text-dark-subtle-text w-6 uppercase">KB</span>
+                                </div>
                             </div>
 
                              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">

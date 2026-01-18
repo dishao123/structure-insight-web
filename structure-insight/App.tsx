@@ -81,6 +81,8 @@ const App: React.FC = () => {
                         files={state.processedData?.fileContents || []}
                         onSelectFile={handlers.handleFileTreeSelect}
                         onCopyPath={handlers.handleCopyPath}
+                        onDeleteFile={handlers.handleDeleteFile}
+                        onToggleExclude={handlers.handleToggleExclude}
                     />
                 )}
             </AnimatePresence>
@@ -105,6 +107,8 @@ const App: React.FC = () => {
                         onClearCache={settings.handleClearCache}
                         showCharCount={state.showCharCount}
                         onToggleShowCharCount={() => settings.setShowCharCount(!state.showCharCount)}
+                        maxCharsThreshold={state.maxCharsThreshold}
+                        onSetMaxCharsThreshold={settings.setMaxCharsThreshold}
                     />
                 )}
             </AnimatePresence>
