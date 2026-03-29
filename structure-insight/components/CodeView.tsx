@@ -5,8 +5,7 @@ import { FileContent, SearchOptions } from '../types';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-// hljs is loaded globally via index.html script tag
-declare const hljs: any;
+// hljs types provided by types/hljs.d.ts
 
 interface FileCardProps {
   file: FileContent;
@@ -32,91 +31,105 @@ const IconButton: React.FC<{icon: string, title: string, onClick: () => void, di
     </button>
 );
 
+/** Build a regex from search options, returning null if invalid */
+function buildSearchRegex(query: string, options: SearchOptions): RegExp | null {
+  if (!query.trim()) return null;
+  const flags = options.caseSensitive ? 'g' : 'gi';
+  let pattern = options.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (options.wholeWord && !options.useRegex) {
+    pattern = `\\b${pattern}\\b`;
+  }
+  try {
+    return new RegExp(pattern, flags);
+  } catch {
+    return null;
+  }
+}
 
-const FileCard: React.FC<FileCardProps> = ({ 
-    file, isEditing, onStartEdit, onSaveEdit, onCancelEdit, 
+const FileCard: React.FC<FileCardProps> = ({
+    file, isEditing, onStartEdit, onSaveEdit, onCancelEdit,
     isMarkdown, isMarkdownPreview, onToggleMarkdownPreview, onShowToast, fontSize,
     searchQuery, searchOptions, activeMatchIndexInFile, onCopyPath
 }) => {
   const [editText, setEditText] = React.useState(file.content);
   const codeRef = React.useRef<HTMLElement>(null);
-  
+  const highlightTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   React.useEffect(() => {
     setEditText(file.content);
   }, [file.content]);
 
-  // Handle syntax highlighting and search highlighting
+  // Cleanup highlight timer on unmount
   React.useEffect(() => {
-    if (codeRef.current && !isEditing && !isMarkdownPreview && !file.excluded) {
-      // 1. Set content and syntax highlight
-      codeRef.current.textContent = file.content;
-      hljs.highlightElement(codeRef.current);
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
 
-      // 2. Apply search highlighting if query exists
-      if (searchQuery.trim()) {
-         try {
-            const flags = searchOptions.caseSensitive ? 'g' : 'gi';
-            let pattern = searchOptions.useRegex ? searchQuery : searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            if (searchOptions.wholeWord && !searchOptions.useRegex) {
-                pattern = `\\b${pattern}\\b`;
-            }
-            const regex = new RegExp(pattern, flags);
+  // Handle syntax highlighting and debounced search highlighting
+  React.useEffect(() => {
+    if (!codeRef.current || isEditing || isMarkdownPreview || file.excluded) return;
 
-            // Use TreeWalker to find text nodes to replace with highlights
-            const walker = document.createTreeWalker(codeRef.current, NodeFilter.SHOW_TEXT, null);
-            const textNodes: Text[] = [];
-            let node: Node | null;
-            while ((node = walker.nextNode())) {
-                textNodes.push(node as Text);
-            }
+    // 1. Set content and syntax highlight
+    codeRef.current.textContent = file.content;
+    hljs.highlightElement(codeRef.current);
 
-            let globalMatchIndex = 0;
+    // 2. Debounce search highlighting
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
 
-            textNodes.forEach(textNode => {
-                const text = textNode.nodeValue;
-                if (!text) return;
-                
-                const matches = [...text.matchAll(regex)];
-                if (matches.length === 0) return;
-                
-                const fragment = document.createDocumentFragment();
-                let lastIndex = 0;
-                
-                matches.forEach(match => {
-                    // Text before match
-                    if (match.index! > lastIndex) {
-                        fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index!)));
-                    }
-                    
-                    // The Match
-                    const mark = document.createElement('mark');
-                    mark.className = 'search-highlight'; // Base class
-                    // Apply active class if this is the currently selected match
-                    if (globalMatchIndex === activeMatchIndexInFile) {
-                        mark.classList.add('search-highlight-active');
-                        // Scroll active match into view
-                        setTimeout(() => mark.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
-                    }
-                    mark.textContent = match[0];
-                    fragment.appendChild(mark);
-                    
-                    globalMatchIndex++;
-                    lastIndex = match.index! + match[0].length;
-                });
-                
-                // Text after last match
-                if (lastIndex < text.length) {
-                    fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
-                }
-                
-                textNode.parentNode?.replaceChild(fragment, textNode);
-            });
+    if (!searchQuery.trim()) return;
 
-         } catch (e) {
-             console.debug("Search highlight error (regex likely invalid yet):", e);
-         }
+    const regex = buildSearchRegex(searchQuery, searchOptions);
+    if (!regex) return;
+
+    highlightTimerRef.current = setTimeout(() => {
+      if (!codeRef.current) return;
+
+      // Use TreeWalker to find text nodes to replace with highlights
+      const walker = document.createTreeWalker(codeRef.current, NodeFilter.SHOW_TEXT, null);
+      const textNodes: Text[] = [];
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        textNodes.push(node as Text);
       }
-    }
+
+      let globalMatchIndex = 0;
+
+      textNodes.forEach(textNode => {
+        const text = textNode.nodeValue;
+        if (!text) return;
+
+        const matches = [...text.matchAll(regex)];
+        if (matches.length === 0) return;
+
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+
+        matches.forEach(match => {
+          if (match.index! > lastIndex) {
+            fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index!)));
+          }
+
+          const mark = document.createElement('mark');
+          mark.className = 'search-highlight';
+          if (globalMatchIndex === activeMatchIndexInFile) {
+            mark.classList.add('search-highlight-active');
+            setTimeout(() => mark.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+          }
+          mark.textContent = match[0];
+          fragment.appendChild(mark);
+
+          globalMatchIndex++;
+          lastIndex = match.index! + match[0].length;
+        });
+
+        if (lastIndex < text.length) {
+          fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+        }
+
+        textNode.parentNode?.replaceChild(fragment, textNode);
+      });
+    }, 150);
   }, [file, isEditing, isMarkdownPreview, searchQuery, searchOptions, activeMatchIndexInFile]);
 
 

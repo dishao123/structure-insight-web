@@ -4,11 +4,10 @@ import { usePersistentState } from './usePersistentState';
 import { useWindowSize } from './useWindowSize';
 import { useFileProcessing } from './useFileProcessing';
 import { useInteraction } from './useInteraction';
+import { useSearch } from './useSearch';
 import { generateFullOutput, buildASCIITree } from '../services/fileProcessor';
-import { SearchOptions, ConfirmationState, FileContent, SearchResultItem } from '../types';
+import { ConfirmationState, FileContent } from '../types';
 import { marked } from 'marked';
-
-declare const hljs: any;
 
 export const useAppLogic = (
     codeViewRef: React.RefObject<HTMLDivElement>,
@@ -23,46 +22,52 @@ export const useAppLogic = (
     const [isFileRankOpen, setIsFileRankOpen] = React.useState(false);
     const [toastMessage, setToastMessage] = React.useState<string | null>(null);
     const [confirmation, setConfirmation] = React.useState<ConfirmationState>({isOpen: false, title: '', message: '', onConfirm: () => {}});
-    
-    // --- Network State ---
-    const [isOnline, setIsOnline] = React.useState(navigator.onLine);
-    
+
     // --- Persistent Settings ---
     const [isDark, setIsDark] = usePersistentState('theme', false);
     const [panelWidth, setPanelWidth] = usePersistentState('panelWidth', 30);
     const [extractContent, setExtractContent] = usePersistentState('extractContent', true);
     const [fontSize, setFontSize] = usePersistentState('fontSize', 14);
     const [showCharCount, setShowCharCount] = usePersistentState('showCharCount', false);
-    const [maxCharsThreshold, setMaxCharsThreshold] = usePersistentState('maxCharsThreshold', 1000000); // Default 1MB (1,000,000 characters approx)
+    const [maxCharsThreshold, setMaxCharsThreshold] = usePersistentState('maxCharsThreshold', 1000000);
 
     // --- Core Data & Selection State ---
     const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(null);
     const [activeView, setActiveView] = React.useState<'structure' | 'code'>('structure');
-    
-    // --- Layout & Search State ---
+
+    // --- Layout State ---
     const windowSize = useWindowSize();
     const [mobileView, setMobileView] = React.useState<'tree' | 'editor'>('editor');
     const isMobile = React.useMemo(() => windowSize.width <= 768, [windowSize.width]);
-    const [isSearchOpen, setIsSearchOpen] = React.useState(false);
-    
-    // Updated Search State
-    const [searchResults, setSearchResults] = React.useState<SearchResultItem[]>([]);
-    const [activeResultIndex, setActiveResultIndex] = React.useState<number | null>(null);
-    const [searchQuery, setSearchQuery] = React.useState('');
-    const [searchOptions, setSearchOptions] = React.useState<SearchOptions>({ caseSensitive: false, useRegex: false, wholeWord: false, fuzzySearch: false });
 
     const handleShowToast = React.useCallback((message: string) => {
         setToastMessage(message);
     }, []);
 
     // --- Child Hooks ---
-    
-    const { 
+    const {
       processedData, setProcessedData, lastProcessedFiles, setLastProcessedFiles, handleProcessing,
       handleFileSelect, handleDrop, handleRefresh, handleCancel, abortControllerRef
     } = useFileProcessing({
-        extractContent, maxCharsThreshold, setIsLoading, setProgressMessage, 
+        extractContent, maxCharsThreshold, setIsLoading, setProgressMessage,
         setMobileView, handleShowToast, isMobile, setSelectedFilePath, setActiveView
+    });
+
+    const {
+        editingPath, setEditingPath, markdownPreviewPaths,
+        handleDeleteFile, handleFileTreeSelect, handleSaveEdit,
+        handleToggleMarkdownPreview, clearInteractionState, handleCopyPath, handleToggleExclude
+    } = useInteraction({
+        processedData, setProcessedData, handleShowToast, isMobile, setMobileView, setConfirmation,
+        selectedFilePath, setSelectedFilePath, setActiveView, showCharCount
+    });
+
+    // --- Search Hook ---
+    const {
+        isSearchOpen, setIsSearchOpen, searchResults, activeResultIndex,
+        searchQuery, searchOptions, handleSearch, handleNavigate, resetSearch,
+    } = useSearch({
+        processedData, isMobile, setMobileView, setSelectedFilePath, setActiveView,
     });
 
     // Update structure string when showCharCount changes
@@ -75,21 +80,21 @@ export const useAppLogic = (
         }
     }, [showCharCount, processedData?.treeData, processedData?.rootName]);
 
-    const {
-        editingPath, setEditingPath, markdownPreviewPaths,
-        handleDeleteFile, handleFileTreeSelect, handleSaveEdit,
-        handleToggleMarkdownPreview, clearInteractionState, handleCopyPath, handleToggleExclude
-    } = useInteraction({
-        processedData, setProcessedData, handleShowToast, isMobile, setMobileView, setConfirmation,
-        selectedFilePath, setSelectedFilePath, setActiveView, showCharCount
-    });
-    
     // --- Derived State ---
     const selectedFile = React.useMemo<FileContent | null>(() => {
         if (!selectedFilePath || !processedData?.fileContents) return null;
         return processedData.fileContents.find(f => f.path === selectedFilePath) || null;
     }, [selectedFilePath, processedData]);
 
+    // Calculate active match index relative to the current file
+    const activeMatchIndexInFile = React.useMemo(() => {
+        if (activeResultIndex === null || !selectedFilePath || searchResults.length === 0) return null;
+        const currentResult = searchResults[activeResultIndex];
+        if (currentResult && currentResult.filePath === selectedFilePath) {
+            return currentResult.indexInFile;
+        }
+        return null;
+    }, [activeResultIndex, selectedFilePath, searchResults]);
 
     // --- Central Reset Logic ---
     const handleReset = React.useCallback(() => {
@@ -106,17 +111,14 @@ export const useAppLogic = (
                 setIsSettingsOpen(false);
                 clearInteractionState();
                 setSelectedFilePath(null);
-                setIsSearchOpen(false);
+                resetSearch();
                 setIsAiChatOpen(false);
                 setIsFileRankOpen(false);
-                setSearchResults([]);
-                setActiveResultIndex(null);
-                setSearchQuery('');
                 setActiveView('structure');
                 handleShowToast("内容已重置。");
             }
         });
-    }, [handleShowToast, clearInteractionState]);
+    }, [handleShowToast, clearInteractionState, resetSearch, abortControllerRef, setProcessedData, setLastProcessedFiles]);
 
     // --- Effects for Theme and Markdown ---
     React.useEffect(() => {
@@ -124,118 +126,6 @@ export const useAppLogic = (
         (document.getElementById('hljs-light-theme') as HTMLLinkElement).disabled = isDark;
         (document.getElementById('hljs-dark-theme') as HTMLLinkElement).disabled = !isDark;
     }, [isDark]);
-    
-    React.useEffect(() => {
-        marked.setOptions({
-            highlight: (code: string, lang: string) => hljs.highlight(code, { language: hljs.getLanguage(lang) ? lang : 'plaintext' }).value,
-            langPrefix: 'hljs language-', gfm: true, breaks: true,
-        });
-    }, []);
-
-    // --- Effects for Network ---
-    React.useEffect(() => {
-        const handleOnline = () => setIsOnline(true);
-        const handleOffline = () => setIsOnline(false);
-
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-        
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        };
-    }, []);
-
-    // --- Search Logic ---
-    const handleSearch = React.useCallback((query: string, options: SearchOptions) => {
-        setSearchQuery(query);
-        setSearchOptions(options);
-
-        if (!query.trim() || !processedData) {
-            setSearchResults([]);
-            setActiveResultIndex(null);
-            return;
-        }
-
-        const flags = options.caseSensitive ? 'g' : 'gi';
-        let pattern = options.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        if (options.wholeWord && !options.useRegex) {
-            pattern = `\\b${pattern}\\b`;
-        }
-        
-        let regex: RegExp;
-        try {
-            regex = new RegExp(pattern, flags);
-        } catch (e) {
-            setSearchResults([]);
-            setActiveResultIndex(null);
-            return;
-        }
-
-        const results: SearchResultItem[] = [];
-
-        // Only search in non-excluded files
-        const activeFiles = processedData.fileContents.filter(f => !f.excluded);
-
-        activeFiles.forEach(file => {
-            const matches = [...file.content.matchAll(regex)];
-            matches.forEach((match, indexInFile) => {
-                if (match.index !== undefined) {
-                    // Calculate line number
-                    const contentUpToMatch = file.content.substring(0, match.index);
-                    const lineNumber = contentUpToMatch.split('\n').length;
-
-                    results.push({
-                        filePath: file.path,
-                        startIndex: match.index,
-                        length: match[0].length,
-                        content: match[0],
-                        line: lineNumber,
-                        indexInFile: indexInFile
-                    });
-                }
-            });
-        });
-
-        setSearchResults(results);
-        if (results.length > 0) {
-            setActiveResultIndex(0);
-            const firstResult = results[0];
-            setSelectedFilePath(firstResult.filePath);
-            setActiveView('code');
-            if(isMobile) setMobileView('editor');
-        } else {
-            setActiveResultIndex(null);
-        }
-    }, [processedData, isMobile, setMobileView, setSelectedFilePath, setActiveView]);
-
-    const handleNavigate = React.useCallback((direction: 'next' | 'prev') => {
-        if (searchResults.length === 0 || activeResultIndex === null) return;
-        
-        const newIndex = direction === 'next'
-            ? (activeResultIndex + 1) % searchResults.length
-            : (activeResultIndex - 1 + searchResults.length) % searchResults.length;
-        
-        setActiveResultIndex(newIndex);
-        
-        const result = searchResults[newIndex];
-        if (result) {
-            setSelectedFilePath(result.filePath);
-            setActiveView('code');
-            if(isMobile) setMobileView('editor');
-        }
-    }, [searchResults, activeResultIndex, isMobile, setMobileView, setSelectedFilePath, setActiveView]);
-    
-    // Calculate active match index relative to the current file
-    const activeMatchIndexInFile = React.useMemo(() => {
-        if (activeResultIndex === null || !selectedFilePath || searchResults.length === 0) return null;
-        const currentResult = searchResults[activeResultIndex];
-        if (currentResult.filePath === selectedFilePath) {
-            return currentResult.indexInFile;
-        }
-        return null;
-    }, [activeResultIndex, selectedFilePath, searchResults]);
-
 
     // --- General Action Handlers ---
     const handleClearCache = React.useCallback(() => {
@@ -249,7 +139,11 @@ export const useAppLogic = (
             }
         });
     }, []);
-    const handleCopyAll = React.useCallback(() => { if (processedData) navigator.clipboard.writeText(generateFullOutput(processedData.structureString, processedData.fileContents)).then(() => handleShowToast('已将所有内容复制到剪贴板！')); }, [processedData, handleShowToast]);
+
+    const handleCopyAll = React.useCallback(() => {
+        if (processedData) navigator.clipboard.writeText(generateFullOutput(processedData.structureString, processedData.fileContents)).then(() => handleShowToast('已将所有内容复制到剪贴板！'));
+    }, [processedData, handleShowToast]);
+
     const handleSave = React.useCallback(() => {
         if (!processedData) return;
         const blob = new Blob([generateFullOutput(processedData.structureString, processedData.fileContents)], { type: 'text/plain;charset=utf-8' });
@@ -286,7 +180,7 @@ export const useAppLogic = (
         window.addEventListener('mousemove', handleResize);
         window.addEventListener('mouseup', stopResize);
     }, [handleResize, stopResize]);
-    
+
     // --- Global Keydown Handler ---
     React.useEffect(() => {
         const handleGlobalKeys = (e: KeyboardEvent) => {
@@ -310,7 +204,6 @@ export const useAppLogic = (
     // --- Memoized Stats ---
     const stats = React.useMemo(() => {
         if (!processedData?.fileContents) return { fileCount: 0, totalLines: 0, totalChars: 0 };
-        // Only count files that are not excluded
         const activeFiles = processedData.fileContents.filter(f => !f.excluded);
         return {
             fileCount: activeFiles.length,
@@ -322,20 +215,20 @@ export const useAppLogic = (
     // --- Assemble Final Return Object ---
     return {
         state: {
-            processedData, isLoading, isDragging, progressMessage, isSettingsOpen, toastMessage, isOnline,
+            processedData, isLoading, isDragging, progressMessage, isSettingsOpen, toastMessage,
             editingPath, markdownPreviewPaths, confirmation,
             isDark, panelWidth, extractContent, fontSize, showCharCount, maxCharsThreshold,
             lastProcessedFiles, mobileView, stats,
             isSearchOpen, isFileRankOpen, searchResults, activeResultIndex, isMobile, isAiChatOpen,
             selectedFilePath, selectedFile, activeView,
-            searchQuery, searchOptions, activeMatchIndexInFile // Export search state for CodeView
+            searchQuery, searchOptions, activeMatchIndexInFile,
         },
         handlers: {
-            setIsDragging, handleDrop: (e: React.DragEvent) => { setIsDragging(false); handleDrop(e, isLoading); }, 
+            setIsDragging, handleDrop: (e: React.DragEvent) => { setIsDragging(false); handleDrop(e, isLoading); },
             handleFileSelect, handleCopyAll, handleSave, handleReset, handleRefresh: () => handleRefresh(handleProcessing), handleCancel,
             setIsSettingsOpen, setToastMessage, setConfirmation,
             handleDeleteFile, handleFileTreeSelect, setEditingPath, handleSaveEdit, handleToggleMarkdownPreview,
-            handleMouseDownResize, 
+            handleMouseDownResize,
             handleMobileViewToggle,
             setIsSearchOpen, setIsFileRankOpen, handleSearch, handleNavigate, setIsAiChatOpen,
             setActiveView,

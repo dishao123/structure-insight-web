@@ -12,118 +12,127 @@ interface FileTreeProps {
   showCharCount: boolean;
 }
 
-// Helper to determine icon and color based on file extension/name
-const getFileIcon = (fileName: string): { icon: string; color: string } => {
+type IconEntry = { icon: string; color: string };
+
+// Special filename lookups (exact match, lowercase)
+const specialFileMap = new Map<string, IconEntry>([
+  ['package.json', { icon: 'fa-brands fa-npm', color: 'text-[#CB3837]' }],
+  ['dockerfile', { icon: 'fa-brands fa-docker', color: 'text-[#2496ED]' }],
+  ['makefile', { icon: 'fa-solid fa-gavel', color: 'text-gray-500' }],
+  ['jenkinsfile', { icon: 'fa-brands fa-jenkins', color: 'text-[#D24939]' }],
+  ['readme.md', { icon: 'fa-brands fa-markdown', color: 'text-gray-700 dark:text-gray-300' }],
+  ['.gitignore', { icon: 'fa-brands fa-git-alt', color: 'text-[#F05032]' }],
+  ['.gitattributes', { icon: 'fa-brands fa-git-alt', color: 'text-[#F05032]' }],
+]);
+
+// Extension-to-icon mapping for O(1) lookups
+const extensionMap = new Map<string, IconEntry>([
+  // Web
+  ['html', { icon: 'fa-brands fa-html5', color: 'text-[#E34F26]' }],
+  ['htm', { icon: 'fa-brands fa-html5', color: 'text-[#E34F26]' }],
+  ['css', { icon: 'fa-brands fa-css3-alt', color: 'text-[#1572B6]' }],
+  ['scss', { icon: 'fa-brands fa-sass', color: 'text-[#CC6699]' }],
+  ['sass', { icon: 'fa-brands fa-sass', color: 'text-[#CC6699]' }],
+  ['less', { icon: 'fa-brands fa-less', color: 'text-[#1D365D]' }],
+  ['js', { icon: 'fa-brands fa-js', color: 'text-[#F7DF1E]' }],
+  ['cjs', { icon: 'fa-brands fa-js', color: 'text-[#F7DF1E]' }],
+  ['mjs', { icon: 'fa-brands fa-js', color: 'text-[#F7DF1E]' }],
+  ['ts', { icon: 'fa-brands fa-js', color: 'text-[#3178C6]' }],
+  ['jsx', { icon: 'fa-brands fa-react', color: 'text-[#61DAFB]' }],
+  ['tsx', { icon: 'fa-brands fa-react', color: 'text-[#61DAFB]' }],
+  ['vue', { icon: 'fa-brands fa-vuejs', color: 'text-[#4FC08D]' }],
+  ['svelte', { icon: 'fa-solid fa-code', color: 'text-[#FF3E00]' }],
+  ['php', { icon: 'fa-brands fa-php', color: 'text-[#777BB4]' }],
+  // Backend / Systems
+  ['py', { icon: 'fa-brands fa-python', color: 'text-[#3776AB]' }],
+  ['pyc', { icon: 'fa-brands fa-python', color: 'text-[#3776AB]' }],
+  ['java', { icon: 'fa-brands fa-java', color: 'text-[#007396]' }],
+  ['class', { icon: 'fa-brands fa-java', color: 'text-[#007396]' }],
+  ['jar', { icon: 'fa-brands fa-java', color: 'text-[#007396]' }],
+  ['rb', { icon: 'fa-regular fa-gem', color: 'text-[#CC342D]' }],
+  ['go', { icon: 'fa-brands fa-golang', color: 'text-[#00ADD8]' }],
+  ['rs', { icon: 'fa-brands fa-rust', color: 'text-[#DEA584]' }],
+  ['swift', { icon: 'fa-brands fa-swift', color: 'text-[#F05138]' }],
+  ['c', { icon: 'fa-solid fa-c', color: 'text-[#555555]' }],
+  ['h', { icon: 'fa-solid fa-c', color: 'text-[#555555]' }],
+  ['cpp', { icon: 'fa-solid fa-c', color: 'text-[#00599C]' }],
+  ['hpp', { icon: 'fa-solid fa-c', color: 'text-[#00599C]' }],
+  ['cc', { icon: 'fa-solid fa-c', color: 'text-[#00599C]' }],
+  ['cs', { icon: 'fa-solid fa-code', color: 'text-[#239120]' }],
+  // Scripts
+  ['sh', { icon: 'fa-solid fa-terminal', color: 'text-gray-500' }],
+  ['bash', { icon: 'fa-solid fa-terminal', color: 'text-gray-500' }],
+  ['zsh', { icon: 'fa-solid fa-terminal', color: 'text-gray-500' }],
+  ['ps1', { icon: 'fa-solid fa-terminal', color: 'text-gray-500' }],
+  ['bat', { icon: 'fa-solid fa-terminal', color: 'text-gray-500' }],
+  ['cmd', { icon: 'fa-solid fa-terminal', color: 'text-gray-500' }],
+  // Data / Config
+  ['json', { icon: 'fa-solid fa-code', color: 'text-yellow-600' }],
+  ['xml', { icon: 'fa-solid fa-code', color: 'text-orange-500' }],
+  ['yaml', { icon: 'fa-solid fa-list', color: 'text-purple-500' }],
+  ['yml', { icon: 'fa-solid fa-list', color: 'text-purple-500' }],
+  ['toml', { icon: 'fa-solid fa-gear', color: 'text-gray-500' }],
+  ['ini', { icon: 'fa-solid fa-gear', color: 'text-gray-500' }],
+  ['env', { icon: 'fa-solid fa-gear', color: 'text-gray-500' }],
+  ['sql', { icon: 'fa-solid fa-database', color: 'text-blue-400' }],
+  ['db', { icon: 'fa-solid fa-database', color: 'text-blue-400' }],
+  ['sqlite', { icon: 'fa-solid fa-database', color: 'text-blue-400' }],
+  // Documents
+  ['md', { icon: 'fa-brands fa-markdown', color: 'text-gray-700 dark:text-gray-300' }],
+  ['txt', { icon: 'fa-regular fa-file-lines', color: 'text-gray-400' }],
+  ['pdf', { icon: 'fa-regular fa-file-pdf', color: 'text-red-500' }],
+  ['doc', { icon: 'fa-regular fa-file-word', color: 'text-blue-700' }],
+  ['docx', { icon: 'fa-regular fa-file-word', color: 'text-blue-700' }],
+  ['xls', { icon: 'fa-regular fa-file-excel', color: 'text-green-600' }],
+  ['xlsx', { icon: 'fa-regular fa-file-excel', color: 'text-green-600' }],
+  ['csv', { icon: 'fa-regular fa-file-excel', color: 'text-green-600' }],
+  ['ppt', { icon: 'fa-regular fa-file-powerpoint', color: 'text-orange-600' }],
+  ['pptx', { icon: 'fa-regular fa-file-powerpoint', color: 'text-orange-600' }],
+  // Media
+  ['png', { icon: 'fa-regular fa-file-image', color: 'text-purple-500' }],
+  ['jpg', { icon: 'fa-regular fa-file-image', color: 'text-purple-500' }],
+  ['jpeg', { icon: 'fa-regular fa-file-image', color: 'text-purple-500' }],
+  ['gif', { icon: 'fa-regular fa-file-image', color: 'text-purple-500' }],
+  ['svg', { icon: 'fa-regular fa-file-image', color: 'text-purple-500' }],
+  ['ico', { icon: 'fa-regular fa-file-image', color: 'text-purple-500' }],
+  ['webp', { icon: 'fa-regular fa-file-image', color: 'text-purple-500' }],
+  ['mp3', { icon: 'fa-regular fa-file-audio', color: 'text-yellow-600' }],
+  ['wav', { icon: 'fa-regular fa-file-audio', color: 'text-yellow-600' }],
+  ['ogg', { icon: 'fa-regular fa-file-audio', color: 'text-yellow-600' }],
+  ['mp4', { icon: 'fa-regular fa-file-video', color: 'text-pink-600' }],
+  ['mov', { icon: 'fa-regular fa-file-video', color: 'text-pink-600' }],
+  ['avi', { icon: 'fa-regular fa-file-video', color: 'text-pink-600' }],
+  ['webm', { icon: 'fa-regular fa-file-video', color: 'text-pink-600' }],
+  // Archives
+  ['zip', { icon: 'fa-regular fa-file-zipper', color: 'text-amber-600' }],
+  ['rar', { icon: 'fa-regular fa-file-zipper', color: 'text-amber-600' }],
+  ['7z', { icon: 'fa-regular fa-file-zipper', color: 'text-amber-600' }],
+  ['tar', { icon: 'fa-regular fa-file-zipper', color: 'text-amber-600' }],
+  ['gz', { icon: 'fa-regular fa-file-zipper', color: 'text-amber-600' }],
+  // Fonts
+  ['ttf', { icon: 'fa-solid fa-font', color: 'text-gray-500' }],
+  ['otf', { icon: 'fa-solid fa-font', color: 'text-gray-500' }],
+  ['woff', { icon: 'fa-solid fa-font', color: 'text-gray-500' }],
+  ['woff2', { icon: 'fa-solid fa-font', color: 'text-gray-500' }],
+]);
+
+const defaultIcon: IconEntry = { icon: 'fa-regular fa-file', color: 'text-gray-400 dark:text-gray-500' };
+
+const getFileIcon = (fileName: string): IconEntry => {
     const lowerName = fileName.toLowerCase();
-    const ext = lowerName.split('.').pop();
-    
-    // Special files
-    if (lowerName === 'package.json') return { icon: 'fa-brands fa-npm', color: 'text-[#CB3837]' };
-    if (lowerName === 'dockerfile') return { icon: 'fa-brands fa-docker', color: 'text-[#2496ED]' };
-    if (lowerName === 'makefile') return { icon: 'fa-solid fa-gavel', color: 'text-gray-500' };
-    if (lowerName === 'jenkinsfile') return { icon: 'fa-brands fa-jenkins', color: 'text-[#D24939]' };
-    if (lowerName === 'readme.md') return { icon: 'fa-brands fa-markdown', color: 'text-gray-700 dark:text-gray-300' };
-    if (lowerName === '.gitignore' || lowerName === '.gitattributes') return { icon: 'fa-brands fa-git-alt', color: 'text-[#F05032]' };
-    if (lowerName.endsWith('.config.js') || lowerName.endsWith('.config.ts')) return { icon: 'fa-solid fa-gear', color: 'text-gray-500' };
 
-    switch (ext) {
-        // Web
-        case 'html': 
-        case 'htm': return { icon: 'fa-brands fa-html5', color: 'text-[#E34F26]' };
-        case 'css': return { icon: 'fa-brands fa-css3-alt', color: 'text-[#1572B6]' };
-        case 'scss': 
-        case 'sass': return { icon: 'fa-brands fa-sass', color: 'text-[#CC6699]' };
-        case 'less': return { icon: 'fa-brands fa-less', color: 'text-[#1D365D]' };
-        case 'js': 
-        case 'cjs':
-        case 'mjs': return { icon: 'fa-brands fa-js', color: 'text-[#F7DF1E]' }; 
-        case 'ts': return { icon: 'fa-brands fa-js', color: 'text-[#3178C6]' }; // JS icon with TS blue
-        case 'jsx': 
-        case 'tsx': return { icon: 'fa-brands fa-react', color: 'text-[#61DAFB]' };
-        case 'vue': return { icon: 'fa-brands fa-vuejs', color: 'text-[#4FC08D]' };
-        case 'svelte': return { icon: 'fa-solid fa-code', color: 'text-[#FF3E00]' };
-        case 'php': return { icon: 'fa-brands fa-php', color: 'text-[#777BB4]' };
-        
-        // Backend / Systems
-        case 'py': 
-        case 'pyc': return { icon: 'fa-brands fa-python', color: 'text-[#3776AB]' };
-        case 'java': 
-        case 'class': 
-        case 'jar': return { icon: 'fa-brands fa-java', color: 'text-[#007396]' };
-        case 'rb': return { icon: 'fa-regular fa-gem', color: 'text-[#CC342D]' };
-        case 'go': return { icon: 'fa-brands fa-golang', color: 'text-[#00ADD8]' };
-        case 'rs': return { icon: 'fa-brands fa-rust', color: 'text-[#DEA584]' };
-        case 'swift': return { icon: 'fa-brands fa-swift', color: 'text-[#F05138]' };
-        case 'c':
-        case 'h': return { icon: 'fa-solid fa-c', color: 'text-[#555555]' };
-        case 'cpp':
-        case 'hpp':
-        case 'cc': return { icon: 'fa-solid fa-c', color: 'text-[#00599C]' };
-        case 'cs': return { icon: 'fa-solid fa-code', color: 'text-[#239120]' }; 
+    // Check special filenames first
+    const special = specialFileMap.get(lowerName);
+    if (special) return special;
 
-        // Scripts
-        case 'sh': 
-        case 'bash':
-        case 'zsh': return { icon: 'fa-solid fa-terminal', color: 'text-gray-500' };
-        case 'ps1': 
-        case 'bat': 
-        case 'cmd': return { icon: 'fa-solid fa-terminal', color: 'text-gray-500' };
-
-        // Data / Config
-        case 'json': return { icon: 'fa-solid fa-code', color: 'text-yellow-600' };
-        case 'xml': return { icon: 'fa-solid fa-code', color: 'text-orange-500' };
-        case 'yaml': 
-        case 'yml': return { icon: 'fa-solid fa-list', color: 'text-purple-500' };
-        case 'toml': 
-        case 'ini': 
-        case 'env': return { icon: 'fa-solid fa-gear', color: 'text-gray-500' };
-        case 'sql': 
-        case 'db': 
-        case 'sqlite': return { icon: 'fa-solid fa-database', color: 'text-blue-400' };
-        
-        // Documents
-        case 'md': return { icon: 'fa-brands fa-markdown', color: 'text-gray-700 dark:text-gray-300' };
-        case 'txt': return { icon: 'fa-regular fa-file-lines', color: 'text-gray-400' };
-        case 'pdf': return { icon: 'fa-regular fa-file-pdf', color: 'text-red-500' };
-        case 'doc': 
-        case 'docx': return { icon: 'fa-regular fa-file-word', color: 'text-blue-700' };
-        case 'xls': 
-        case 'xlsx': 
-        case 'csv': return { icon: 'fa-regular fa-file-excel', color: 'text-green-600' };
-        case 'ppt': 
-        case 'pptx': return { icon: 'fa-regular fa-file-powerpoint', color: 'text-orange-600' };
-        
-        // Media
-        case 'png': 
-        case 'jpg': 
-        case 'jpeg': 
-        case 'gif': 
-        case 'svg': 
-        case 'ico': 
-        case 'webp': return { icon: 'fa-regular fa-file-image', color: 'text-purple-500' };
-        case 'mp3': 
-        case 'wav': 
-        case 'ogg': return { icon: 'fa-regular fa-file-audio', color: 'text-yellow-600' };
-        case 'mp4': 
-        case 'mov': 
-        case 'avi': 
-        case 'webm': return { icon: 'fa-regular fa-file-video', color: 'text-pink-600' };
-        
-        // Archives
-        case 'zip': 
-        case 'rar': 
-        case '7z': 
-        case 'tar': 
-        case 'gz': return { icon: 'fa-regular fa-file-zipper', color: 'text-amber-600' };
-        
-        // Fonts
-        case 'ttf':
-        case 'otf':
-        case 'woff':
-        case 'woff2': return { icon: 'fa-solid fa-font', color: 'text-gray-500' };
-
-        default: return { icon: 'fa-regular fa-file', color: 'text-gray-400 dark:text-gray-500' };
+    // Check config file patterns
+    if (lowerName.endsWith('.config.js') || lowerName.endsWith('.config.ts')) {
+      return { icon: 'fa-solid fa-gear', color: 'text-gray-500' };
     }
+
+    // Extension lookup
+    const ext = lowerName.split('.').pop()!;
+    return extensionMap.get(ext) ?? defaultIcon;
 };
 
 const FileTreeNode: React.FC<{ 

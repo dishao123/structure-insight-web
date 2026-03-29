@@ -32,7 +32,6 @@ export interface SearchOptions {
   caseSensitive: boolean;
   useRegex: boolean;
   wholeWord: boolean;
-  fuzzySearch: boolean;
 }
 
 export interface SearchResultItem {
