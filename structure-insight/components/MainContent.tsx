@@ -135,6 +135,7 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                     onCopyPath={handlers.handleCopyPath}
                                                 wordWrap={state.wordWrap}
                                     onToggleExclude={handlers.handleToggleExclude}
+                                    onDirDoubleClick={handlers.handleDirDoubleClick}
                                     selectedFilePath={state.selectedFilePath}
                                     showCharCount={state.showCharCount}
                                 />
@@ -216,6 +217,7 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                         onCopyPath={handlers.handleCopyPath}
                                                 wordWrap={state.wordWrap}
                                         onToggleExclude={handlers.handleToggleExclude}
+                                        onDirDoubleClick={handlers.handleDirDoubleClick}
                                         selectedFilePath={state.selectedFilePath}
                                         showCharCount={state.showCharCount}
                                     />
