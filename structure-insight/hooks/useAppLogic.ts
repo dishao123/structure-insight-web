@@ -30,6 +30,7 @@ export const useAppLogic = (
     const [extractContent, setExtractContent] = usePersistentState('extractContent', true);
     const [fontSize, setFontSize] = usePersistentState('fontSize', 14);
     const [showCharCount, setShowCharCount] = usePersistentState('showCharCount', false);
+    const [wordWrap, setWordWrap] = usePersistentState('wordWrap', false);
     const [maxCharsThreshold, setMaxCharsThreshold] = usePersistentState('maxCharsThreshold', 1000000);
 
     // --- Core Data & Selection State ---
@@ -258,7 +259,7 @@ export const useAppLogic = (
         state: {
             processedData, isLoading, isDragging, progressMessage, isSettingsOpen, toastMessage,
             editingPath, markdownPreviewPaths, confirmation,
-            isDark, panelWidth, extractContent, fontSize, showCharCount, maxCharsThreshold,
+            isDark, panelWidth, extractContent, fontSize, showCharCount, maxCharsThreshold, wordWrap,
             lastProcessedFiles, mobileView, stats,
             isSearchOpen, isFileRankOpen, isShortcutsOpen, searchResults, activeResultIndex, isMobile, isAiChatOpen,
             selectedFilePath, selectedFile, activeView,
@@ -279,7 +280,7 @@ export const useAppLogic = (
             handleToggleExclude,
         },
         settings: {
-            setIsDark, setExtractContent, setFontSize, handleClearCache, setShowCharCount, setMaxCharsThreshold
+            setIsDark, setExtractContent, setFontSize, handleClearCache, setShowCharCount, setMaxCharsThreshold, setWordWrap
         },
     };
 };

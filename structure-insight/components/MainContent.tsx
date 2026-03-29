@@ -133,6 +133,7 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                     onFileSelect={handlers.handleFileTreeSelect}
                                     onDeleteFile={handlers.handleDeleteFile}
                                     onCopyPath={handlers.handleCopyPath}
+                                                wordWrap={state.wordWrap}
                                     onToggleExclude={handlers.handleToggleExclude}
                                     selectedFilePath={state.selectedFilePath}
                                     showCharCount={state.showCharCount}
@@ -174,6 +175,7 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                                 searchOptions={state.searchOptions}
                                                 activeMatchIndexInFile={state.activeMatchIndexInFile}
                                                 onCopyPath={handlers.handleCopyPath}
+                                                wordWrap={state.wordWrap}
                                              />
                                          )}
                                     </div>
@@ -212,6 +214,7 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                         onFileSelect={handlers.handleFileTreeSelect}
                                         onDeleteFile={handlers.handleDeleteFile}
                                         onCopyPath={handlers.handleCopyPath}
+                                                wordWrap={state.wordWrap}
                                         onToggleExclude={handlers.handleToggleExclude}
                                         selectedFilePath={state.selectedFilePath}
                                         showCharCount={state.showCharCount}
@@ -254,6 +257,7 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                                 searchOptions={state.searchOptions}
                                                 activeMatchIndexInFile={state.activeMatchIndexInFile}
                                                 onCopyPath={handlers.handleCopyPath}
+                                                wordWrap={state.wordWrap}
                                             />
                                         </div>
                                         <div className={state.activeView === 'structure' ? 'block min-h-full' : 'hidden'}>

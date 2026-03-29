@@ -190,6 +190,11 @@ const FileTreeNode: React.FC<{
   let displayName = node.name;
   const isSelected = !node.isDirectory && node.path === selectedFilePath;
 
+  // Add stats to tooltip for processed files
+  if (!node.isDirectory && (node.status === 'processed' || !node.status) && node.lines && node.chars) {
+    title = `${node.path}\n${node.lines} 行 · ${node.chars} 字符`;
+  }
+
 
   if (node.status === 'skipped') {
       statusClass += ' opacity-60';

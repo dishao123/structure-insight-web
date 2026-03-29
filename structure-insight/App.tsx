@@ -118,6 +118,8 @@ const App: React.FC = () => {
                         onToggleShowCharCount={() => settings.setShowCharCount(!state.showCharCount)}
                         maxCharsThreshold={state.maxCharsThreshold}
                         onSetMaxCharsThreshold={settings.setMaxCharsThreshold}
+                        wordWrap={state.wordWrap}
+                        onToggleWordWrap={() => settings.setWordWrap(!state.wordWrap)}
                     />
                 )}
             </AnimatePresence>
