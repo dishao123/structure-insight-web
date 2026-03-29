@@ -283,4 +283,4 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
     );
 };
 
-export default MainContent;
+export default React.memo(MainContent);
