@@ -1,30 +1,9 @@
 
 import JSZip from 'jszip';
+import ignore from 'ignore';
 import { FileNode, FileContent, ProcessedFiles } from '../types';
-
-const IGNORED_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.ico', '.webp',
-  '.mp3', '.wav', '.ogg', '.mp4', '.mov', '.avi', '.webm',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.zip', '.rar', '.7z', '.tar', '.gz',
-  '.exe', '.dll', '.so', '.o', '.a', '.obj',
-  '.class', '.jar', '.pyc', '.pyd',
-  '.DS_Store',
-  '.eot', '.ttf', '.woff', '.woff2',
-]);
-
-const IGNORED_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.vscode', '.idea', 'dist', 'build', 'out', 'target']);
-
-// Move langMap outside to prevent recreation on every function call
-const LANG_MAP: { [key: string]: string } = {
-    'js': 'javascript', 'jsx': 'javascript', 'ts': 'typescript', 'tsx': 'typescript',
-    'py': 'python', 'html': 'xml', 'xml': 'xml', 'css': 'css', 'scss': 'css', 'less': 'css',
-    'json': 'json', 'md': 'markdown', 'yml': 'yaml', 'yaml': 'yaml', 'sh': 'bash',
-    'java': 'java', 'c': 'c', 'h': 'c', 'cpp': 'cpp', 'hpp': 'cpp', 'cs': 'csharp', 'go': 'go', 'php': 'php',
-    'rb': 'ruby', 'rs': 'rust', 'sql': 'sql', 'swift': 'swift', 'kt': 'kotlin', 'kts': 'kotlin',
-    'dockerfile': 'dockerfile', 'gradle': 'groovy', 'vue': 'html', 'svelte': 'html',
-    'log': 'plaintext', 'txt': 'plaintext', 'env': 'properties', 'ini': 'ini',
-};
+import { IGNORED_EXTENSIONS, IGNORED_DIRS, LANG_MAP, FILE_PROCESS_BATCH_SIZE } from './constants';
+import { generateRepomixPlainOutput } from './repomixPlainOutput';
 
 function getLanguage(fileName: string): string {
     const extension = fileName.split('.').pop()?.toLowerCase() || '';
@@ -38,6 +17,53 @@ async function readFileContent(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
+}
+
+function getFilePath(file: File): string {
+    return (file.webkitRelativePath || file.name).replace(/\\/g, '/');
+}
+
+function parseGitignorePatterns(content: string): string[] {
+    return content
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#'));
+}
+
+async function buildRootGitignoreMatchers(files: File[]): Promise<Map<string, ReturnType<typeof ignore>>> {
+    const matchers = new Map<string, ReturnType<typeof ignore>>();
+
+    for (const file of files) {
+        const path = getFilePath(file);
+        const parts = path.split('/').filter(Boolean);
+
+        if (parts.length !== 2 || parts[1] !== '.gitignore') {
+            continue;
+        }
+
+        const patterns = parseGitignorePatterns(await readFileContent(file));
+        if (patterns.length === 0) {
+            continue;
+        }
+
+        matchers.set(parts[0], ignore().add(patterns));
+    }
+
+    return matchers;
+}
+
+function isIgnoredByGitignore(path: string, matchers: Map<string, ReturnType<typeof ignore>>): boolean {
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length < 2) {
+        return false;
+    }
+
+    const matcher = matchers.get(parts[0]);
+    if (!matcher) {
+        return false;
+    }
+
+    return matcher.ignores(parts.slice(1).join('/'));
 }
 
 export function buildASCIITree(treeData: FileNode[], rootName: string, showStats: boolean = false): string {
@@ -97,7 +123,7 @@ async function handleZipFile(zipFile: File): Promise<File[]> {
     return files;
 }
 
-export async function processDroppedItems(items: DataTransferItemList, onProgress: (msg: string) => void, signal: AbortSignal): Promise<File[]> {
+export async function processDroppedItems(items: DataTransferItemList, onProgress: (msg: string) => void, signal?: AbortSignal): Promise<File[]> {
     const allFiles: File[] = [];
     const entries: FileSystemEntry[] = [];
     
@@ -117,7 +143,7 @@ export async function processDroppedItems(items: DataTransferItemList, onProgres
     }
 
     const readEntries = async (entry: FileSystemEntry): Promise<File[]> => {
-        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         if (entry.isFile) {
             return new Promise((resolve, reject) => {
                 (entry as FileSystemFileEntry).file(file => {
@@ -141,7 +167,7 @@ export async function processDroppedItems(items: DataTransferItemList, onProgres
             return new Promise((resolve, reject) => {
                 const readBatch = () => {
                     dirReader.readEntries(async (batch) => {
-                         if (signal.aborted) {
+                         if (signal?.aborted) {
                              reject(new DOMException('Aborted', 'AbortError'));
                              return;
                          }
@@ -199,24 +225,33 @@ export async function processFiles(files: File[], onProgress: (msg: string) => v
     }
     // --- End Unzipping logic ---
 
+    const rootGitignoreMatchers = await buildRootGitignoreMatchers(allNonZipFiles);
 
     const validFiles = allNonZipFiles.filter(file => {
-        const path = file.webkitRelativePath || file.name;
-        return path && !path.split('/').some(part => IGNORED_DIRS.has(part) || part.startsWith('.'));
+        const path = getFilePath(file);
+        return path &&
+            !path.split('/').some(part => IGNORED_DIRS.has(part)) &&
+            !isIgnoredByGitignore(path, rootGitignoreMatchers);
     });
 
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
     
     let processedCount = 0;
     const totalFiles = validFiles.length;
+    const BATCH_SIZE = FILE_PROCESS_BATCH_SIZE;
 
     for (const file of validFiles) {
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-        
+
         processedCount++;
         onProgress(`正在处理文件 ${processedCount}/${totalFiles}: ${file.name}`);
 
-        const path = file.webkitRelativePath || file.name;
+        // Yield to UI thread every BATCH_SIZE files
+        if (processedCount % BATCH_SIZE === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        const path = getFilePath(file);
         const parts = path.split('/').filter(p => p);
 
         let parentNode: FileNode | undefined = undefined;
@@ -241,16 +276,8 @@ export async function processFiles(files: File[], onProgress: (msg: string) => v
 
             if (parentNode) {
                 parentNode.children.push(newNode);
-                parentNode.children.sort((a, b) => {
-                    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-                    return a.name.localeCompare(b.name);
-                });
             } else {
                 roots.push(newNode);
-                roots.sort((a, b) => {
-                    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-                    return a.name.localeCompare(b.name);
-                });
             }
             parentNode = newNode;
         }
@@ -260,25 +287,55 @@ export async function processFiles(files: File[], onProgress: (msg: string) => v
         
         const extension = `.${file.name.split('.').pop()?.toLowerCase()}`;
         const isIgnored = IGNORED_EXTENSIONS.has(extension);
-        const isTooLarge = file.size > maxCharsThreshold;
+        // Skip reading very large binary files based on byte size (rough heuristic)
+        const isLikelyTooLarge = file.size > maxCharsThreshold * 3;
 
-        if (!extractContent || isIgnored || isTooLarge) {
+        if (!extractContent || isIgnored) {
             fileNode.status = 'skipped';
-            // We still want basic stats even if skipped (size based on file object)
             fileNode.chars = file.size;
+        } else if (isLikelyTooLarge) {
+            // For files with very large byte size, read content and check actual char count
+            try {
+                const content = await readFileContent(file);
+                if (content.length > maxCharsThreshold) {
+                    fileNode.status = 'skipped';
+                    fileNode.chars = content.length;
+                } else {
+                    const lineCount = content.split('\n').length;
+                    fileContents.push({
+                        path: path,
+                        content: content,
+                        originalContent: content,
+                        language: getLanguage(file.name),
+                        stats: { lines: lineCount, chars: content.length }
+                    });
+                    fileNode.status = 'processed';
+                    fileNode.lines = lineCount;
+                    fileNode.chars = content.length;
+                }
+            } catch (e) {
+                fileNode.status = 'error';
+                console.warn(`Could not read file as text: ${file.name}`);
+            }
         } else {
             try {
                 const content = await readFileContent(file);
                 const lineCount = content.split('\n').length;
-                fileContents.push({
-                    path: path,
-                    content: content,
-                    language: getLanguage(file.name),
-                    stats: { lines: lineCount, chars: content.length }
-                });
-                fileNode.status = 'processed';
-                fileNode.lines = lineCount;
-                fileNode.chars = content.length;
+                if (content.length > maxCharsThreshold) {
+                    fileNode.status = 'skipped';
+                    fileNode.chars = content.length;
+                } else {
+                    fileContents.push({
+                        path: path,
+                        content: content,
+                        originalContent: content,
+                        language: getLanguage(file.name),
+                        stats: { lines: lineCount, chars: content.length }
+                    });
+                    fileNode.status = 'processed';
+                    fileNode.lines = lineCount;
+                    fileNode.chars = content.length;
+                }
             } catch (e) {
                 fileNode.status = 'error';
                 console.warn(`Could not read file as text: ${file.name}`);
@@ -287,6 +344,20 @@ export async function processFiles(files: File[], onProgress: (msg: string) => v
     }
 
     fileContents.sort((a,b) => a.path.localeCompare(b.path));
+
+    // Sort tree once at the end instead of on every insertion
+    const sortNodes = (nodes: FileNode[]): FileNode[] => {
+        nodes.sort((a, b) => {
+            if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+        for (const node of nodes) {
+            if (node.isDirectory) sortNodes(node.children);
+        }
+        return nodes;
+    };
+    sortNodes(roots);
+
     onProgress("正在完成输出...");
     
     let rootNameForDisplay = "项目";
@@ -300,31 +371,27 @@ export async function processFiles(files: File[], onProgress: (msg: string) => v
         fileContents,
         structureString,
         rootName: rootNameForDisplay,
+        exportMetadata: {
+            usesDefaultIgnorePatterns: true,
+            usesGitignorePatterns: rootGitignoreMatchers.size > 0,
+            sortsByGitChangeCount: false,
+        },
     };
 }
 
 
 export function generateFullOutput(structureString: string, fileContents: FileContent[]): string {
-    let output = "文件结构:\n";
-    output += structureString;
-    
-    // Filter out excluded files
-    const activeFiles = fileContents.filter(f => !f.excluded);
-    
-    if (activeFiles.length > 0) {
-        output += "\n\n文件内容:\n";
-
-        for (const file of activeFiles) {
-            output += `\n--- START OF FILE ${file.path} ---\n`;
-            output += file.content;
-            if (file.content && !file.content.endsWith('\n')) {
-                output += '\n';
-            }
-            output += `--- END OF FILE ${file.path} ---\n`;
+    return generateRepomixPlainOutput(
+        {
+            rootName: structureString.split('\n')[0] || 'Project',
+            structureString,
+            treeData: [],
+            fileContents,
+        },
+        {
+            includeFileSummary: true,
+            includeDirectoryStructure: true,
+            includeFiles: true,
         }
-    } else if (structureString !== `${structureString.split('\n')[0]}\n`) { // check if there is more than just the root
-        output += "\n\n(未提取文件内容)";
-    }
-
-    return output;
+    );
 }

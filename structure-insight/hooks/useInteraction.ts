@@ -6,7 +6,7 @@ import { buildASCIITree } from '../services/fileProcessor';
 interface InteractionProps {
     processedData: ProcessedFiles | null;
     setProcessedData: React.Dispatch<React.SetStateAction<ProcessedFiles | null>>;
-    handleShowToast: (message: string) => void;
+    handleShowToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     isMobile: boolean;
     setMobileView: (view: 'tree' | 'editor') => void;
     setConfirmation: React.Dispatch<React.SetStateAction<ConfirmationState>>;
@@ -46,13 +46,17 @@ export const useInteraction = ({
                     
                     const filterTreeRecursive = (nodes: FileNode[]): FileNode[] => {
                         return nodes
-                            .filter(node => node.path !== path)
                             .map(node => {
+                                if (node.path === path) return null;
                                 if (node.isDirectory) {
-                                    return { ...node, children: filterTreeRecursive(node.children) };
+                                    const filteredChildren = filterTreeRecursive(node.children);
+                                    // Remove empty directories after child deletion
+                                    if (filteredChildren.length === 0) return null;
+                                    return { ...node, children: filteredChildren };
                                 }
                                 return node;
-                            });
+                            })
+                            .filter((node): node is FileNode => node !== null);
                     };
 
                     const newTreeData = filterTreeRecursive(JSON.parse(JSON.stringify(prevData.treeData)));
@@ -72,10 +76,37 @@ export const useInteraction = ({
     };
     
     const handleSaveEdit = (path: string, newContent: string) => {
+        const nextLines = newContent.split('\n').length;
+        const nextChars = newContent.length;
+
         setProcessedData(prev => {
             if (!prev) return null;
-            const newFileContents = prev.fileContents.map(f => f.path === path ? { ...f, content: newContent, stats: { lines: newContent.split('\n').length, chars: newContent.length }} : f);
-            return { ...prev, fileContents: newFileContents };
+            const newFileContents = prev.fileContents.map(f =>
+                f.path === path
+                    ? { ...f, content: newContent, stats: { lines: nextLines, chars: nextChars } }
+                    : f
+            );
+
+            const updateTreeRecursive = (nodes: FileNode[]): FileNode[] =>
+                nodes.map(node => {
+                    if (node.path === path && !node.isDirectory) {
+                        return {
+                            ...node,
+                            status: 'processed',
+                            lines: nextLines,
+                            chars: nextChars,
+                        };
+                    }
+                    if (node.children.length > 0) {
+                        return { ...node, children: updateTreeRecursive(node.children) };
+                    }
+                    return node;
+                });
+
+            const newTreeData = updateTreeRecursive(prev.treeData);
+            const newStructureString = buildASCIITree(newTreeData, prev.rootName, showCharCount);
+
+            return { ...prev, fileContents: newFileContents, treeData: newTreeData, structureString: newStructureString };
         });
         setEditingPath(null);
     };
@@ -129,8 +160,10 @@ export const useInteraction = ({
     };
 
     const handleCopyPath = (path: string) => {
-        navigator.clipboard.writeText(path);
-        handleShowToast('路径已复制');
+        navigator.clipboard.writeText(path).then(
+            () => handleShowToast('路径已复制'),
+            () => handleShowToast('复制失败，请检查剪贴板权限', 'error')
+        );
     };
     
     return {

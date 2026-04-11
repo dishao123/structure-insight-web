@@ -120,6 +120,8 @@ const extensionMap = new Map<string, IconEntry>([
 
 const defaultIcon: IconEntry = { icon: 'fa-regular fa-file', color: 'text-gray-400 dark:text-gray-500' };
 
+export type { IconEntry };
+
 const getFileIcon = (fileName: string): IconEntry => {
     const lowerName = fileName.toLowerCase();
 
@@ -138,7 +140,28 @@ const getFileIcon = (fileName: string): IconEntry => {
 };
 
 export { getFileIcon };
-export type { IconEntry };
+
+// Helper to find a node by path
+function findNode(nodes: FileNode[], path: string): FileNode | undefined {
+  for (const n of nodes) {
+    if (n.path === path) return n;
+    if (n.isDirectory) {
+      const found = findNode(n.children, path);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+// Helper to count all descendant files in a directory node
+function countFiles(node: FileNode): number {
+  if (!node.isDirectory) return 1;
+  let count = 0;
+  for (const child of node.children) {
+    count += countFiles(child);
+  }
+  return count;
+}
 
 const FileTreeNode: React.FC<{
     node: FileNode;
@@ -150,12 +173,15 @@ const FileTreeNode: React.FC<{
     level: number;
     selectedFilePath: string | null;
     showCharCount: boolean;
-}> = React.memo(({ node, onFileSelect, onDeleteFile, onCopyPath, onToggleExclude, onDirDoubleClick, level, selectedFilePath, showCharCount }) => {
-  const [isOpen, setIsOpen] = React.useState(true);
+    expandedPaths: Set<string>;
+    onToggleExpand: (path: string) => void;
+    focusedPath: string | null;
+}> = React.memo(({ node, onFileSelect, onDeleteFile, onCopyPath, onToggleExclude, onDirDoubleClick, level, selectedFilePath, showCharCount, expandedPaths, onToggleExpand, focusedPath }) => {
+  const isOpen = expandedPaths.has(node.path);
 
   const handleToggle = () => {
     if (node.isDirectory) {
-      setIsOpen(!isOpen);
+      onToggleExpand(node.path);
     }
   };
 
@@ -169,7 +195,7 @@ const FileTreeNode: React.FC<{
 
   const handleDoubleClick = () => {
     if (node.isDirectory && onDirDoubleClick) {
-      setIsOpen(!isOpen);
+      onToggleExpand(node.path);
       onDirDoubleClick();
     }
   };
@@ -222,7 +248,7 @@ const FileTreeNode: React.FC<{
   return (
     <li style={{ paddingLeft: `${level > 1 ? 1.25 : 0}rem` }} className="list-none">
       <div
-        className={`group flex flex-col py-1 px-2 rounded-md cursor-pointer hover:bg-light-border dark:hover:bg-dark-border/50 transition-colors duration-150 ${statusClass} ${isSelected ? 'bg-primary/10 dark:bg-primary/20' : ''}`}
+        className={`group flex flex-col py-1 px-2 rounded-md cursor-pointer hover:bg-light-border dark:hover:bg-dark-border/50 transition-colors duration-150 ${statusClass} ${isSelected ? 'bg-primary/10 dark:bg-primary/20' : ''} ${focusedPath === node.path ? 'ring-1 ring-primary/50 bg-primary/5' : ''}`}
         onClick={handleSelect}
         onDoubleClick={handleDoubleClick}
         title={title}
@@ -237,8 +263,12 @@ const FileTreeNode: React.FC<{
             {!node.isDirectory && <span className="w-4 shrink-0"></span>}
             
             <span className="shrink-0">{iconElement}</span>
-            
+
             <span className={`truncate text-sm flex-1 ${node.excluded ? 'line-through' : ''}`}>{displayName}</span>
+
+            {node.isDirectory && (
+                <span className="text-[10px] text-light-subtle-text/60 dark:text-dark-subtle-text/60 shrink-0 ml-1 tabular-nums">{countFiles(node)}</span>
+            )}
             
             {!node.isDirectory && node.status === 'processed' && (
                 <div className={`flex items-center space-x-2 text-xs text-light-subtle-text dark:text-dark-subtle-text shrink-0 ml-2 transition-opacity ${showCharCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
@@ -297,7 +327,7 @@ const FileTreeNode: React.FC<{
               transition={{ duration: 0.15, ease: 'easeInOut' }}
             >
               {node.children.map(child => (
-                <FileTreeNode key={child.path} node={child} onFileSelect={onFileSelect} onDeleteFile={onDeleteFile} onCopyPath={onCopyPath} onToggleExclude={onToggleExclude} onDirDoubleClick={onDirDoubleClick} level={level + 1} selectedFilePath={selectedFilePath} showCharCount={showCharCount} />
+                <FileTreeNode key={child.path} node={child} onFileSelect={onFileSelect} onDeleteFile={onDeleteFile} onCopyPath={onCopyPath} onToggleExclude={onToggleExclude} onDirDoubleClick={onDirDoubleClick} level={level + 1} selectedFilePath={selectedFilePath} showCharCount={showCharCount} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} focusedPath={focusedPath} />
               ))}
             </motion.ul>
           )}
@@ -308,15 +338,128 @@ const FileTreeNode: React.FC<{
 });
 
 const FileTree: React.FC<FileTreeProps> = ({ nodes, onFileSelect, onDeleteFile, onCopyPath, onToggleExclude, onDirDoubleClick, selectedFilePath, showCharCount }) => {
+  const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(() => {
+    // Default: expand all directories
+    const paths = new Set<string>();
+    const walk = (items: FileNode[]) => {
+      for (const n of items) {
+        if (n.isDirectory) {
+          paths.add(n.path);
+          walk(n.children);
+        }
+      }
+    };
+    walk(nodes);
+    return paths;
+  });
+
+  const [focusedPath, setFocusedPath] = React.useState<string | null>(null);
+
+  const handleToggleExpand = React.useCallback((path: string) => {
+    setExpandedPaths(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  // Collect all visible paths in order for keyboard navigation
+  const visiblePaths = React.useMemo(() => {
+    const result: string[] = [];
+    const walk = (items: FileNode[]) => {
+      for (const n of items) {
+        result.push(n.path);
+        if (n.isDirectory && expandedPaths.has(n.path)) {
+          walk(n.children);
+        }
+      }
+    };
+    walk(nodes);
+    return result;
+  }, [nodes, expandedPaths]);
+
+  const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+    if (!visiblePaths.length) return;
+    const currentIdx = focusedPath ? visiblePaths.indexOf(focusedPath) : -1;
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        e.preventDefault();
+        const next = currentIdx < visiblePaths.length - 1 ? currentIdx + 1 : 0;
+        setFocusedPath(visiblePaths[next]);
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        const prev = currentIdx > 0 ? currentIdx - 1 : visiblePaths.length - 1;
+        setFocusedPath(visiblePaths[prev]);
+        break;
+      }
+      case 'ArrowRight': {
+        e.preventDefault();
+        if (focusedPath) {
+          const node = findNode(nodes, focusedPath);
+          if (node?.isDirectory && !expandedPaths.has(focusedPath)) {
+            handleToggleExpand(focusedPath);
+          }
+        }
+        break;
+      }
+      case 'ArrowLeft': {
+        e.preventDefault();
+        if (focusedPath) {
+          const node = findNode(nodes, focusedPath);
+          if (node?.isDirectory && expandedPaths.has(focusedPath)) {
+            handleToggleExpand(focusedPath);
+          }
+        }
+        break;
+      }
+      case 'Enter': {
+        e.preventDefault();
+        if (focusedPath) {
+          const node = findNode(nodes, focusedPath);
+          if (node) {
+            if (node.isDirectory) handleToggleExpand(focusedPath);
+            else if (node.status === 'processed') onFileSelect(focusedPath);
+          }
+        }
+        break;
+      }
+      case 'Escape':
+        setFocusedPath(null);
+        break;
+    }
+  }, [visiblePaths, focusedPath, nodes, expandedPaths, handleToggleExpand, onFileSelect]);
+
+  const collapseAll = () => setExpandedPaths(new Set());
+  const expandAll = () => {
+    const all = new Set<string>();
+    const walk = (items: FileNode[]) => {
+      for (const n of items) {
+        if (n.isDirectory) { all.add(n.path); walk(n.children); }
+      }
+    };
+    walk(nodes);
+    setExpandedPaths(all);
+  };
+
   if (!nodes || nodes.length === 0) {
     return <div className="p-4 text-center text-sm text-light-subtle-text dark:text-dark-subtle-text">未加载文件。</div>;
   }
   return (
-    <div className="p-2">
-      <h3 className="text-xs font-semibold px-2 mb-2 text-light-subtle-text dark:text-dark-subtle-text uppercase tracking-wider">资源管理器</h3>
+    <div className="p-2" tabIndex={0} onKeyDown={handleKeyDown}>
+      <div className="flex items-center justify-between px-2 mb-2">
+        <h3 className="text-xs font-semibold text-light-subtle-text dark:text-dark-subtle-text uppercase tracking-wider">资源管理器</h3>
+        <div className="flex items-center gap-1">
+          <button onClick={expandAll} className="w-6 h-6 rounded flex items-center justify-center text-light-subtle-text hover:text-primary hover:bg-light-border dark:hover:bg-dark-border/50 transition-colors" title="全部展开"><i className="fa-solid fa-angles-down text-xs"></i></button>
+          <button onClick={collapseAll} className="w-6 h-6 rounded flex items-center justify-center text-light-subtle-text hover:text-primary hover:bg-light-border dark:hover:bg-dark-border/50 transition-colors" title="全部折叠"><i className="fa-solid fa-angles-up text-xs"></i></button>
+        </div>
+      </div>
       <ul className="pl-0">
         {nodes.map(node => (
-          <FileTreeNode key={node.path} node={node} onFileSelect={onFileSelect} onDeleteFile={onDeleteFile} onCopyPath={onCopyPath} onToggleExclude={onToggleExclude} onDirDoubleClick={onDirDoubleClick} level={1} selectedFilePath={selectedFilePath} showCharCount={showCharCount} />
+          <FileTreeNode key={node.path} node={node} onFileSelect={onFileSelect} onDeleteFile={onDeleteFile} onCopyPath={onCopyPath} onToggleExclude={onToggleExclude} onDirDoubleClick={onDirDoubleClick} level={1} selectedFilePath={selectedFilePath} showCharCount={showCharCount} expandedPaths={expandedPaths} onToggleExpand={handleToggleExpand} focusedPath={focusedPath} />
         ))}
       </ul>
     </div>

@@ -3,15 +3,27 @@ import React from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useAppLogic } from './hooks/useAppLogic';
 import Toast from './components/Toast';
-import SettingsDialog from './components/SettingsDialog';
 import Header from './components/Header';
 import MainContent from './components/MainContent';
 import StatusBar from './components/StatusBar';
-import SearchDialog from './components/SearchDialog';
 import ConfirmationDialog from './components/ConfirmationDialog';
-import AIChat from './components/AIChat';
-import FileRankDialog from './components/FileRankDialog';
-import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
+
+// Lazy-load heavy components
+const SettingsDialog = React.lazy(() => import('./components/SettingsDialog'));
+const SearchDialog = React.lazy(() => import('./components/SearchDialog'));
+const FileRankDialog = React.lazy(() => import('./components/FileRankDialog'));
+const KeyboardShortcutsDialog = React.lazy(() => import('./components/KeyboardShortcutsDialog'));
+
+const SuspenseFallback = () => null;
+
+function getProgressWidth(message: string | null): string {
+    if (!message) return '90%';
+    const match = message.match(/(\d+)\/(\d+)/);
+    if (!match) return '90%';
+    const current = parseInt(match[1]);
+    const total = Math.max(1, parseInt(match[2]));
+    return `${Math.min(95, (current / total) * 100)}%`;
+}
 
 const App: React.FC = () => {
     const codeViewRef = React.useRef<HTMLDivElement>(null);
@@ -21,17 +33,19 @@ const App: React.FC = () => {
     const { state, handlers, settings } = logic;
     
     return (
-        <div 
+        <div
             className="flex flex-col h-full bg-light-bg dark:bg-dark-bg"
-            onDragEnter={(e) => {e.preventDefault(); e.stopPropagation(); handlers.setIsDragging(true);}} 
-            onDragOver={(e) => {e.preventDefault(); e.stopPropagation();}} 
-            onDragLeave={(e) => {e.preventDefault(); e.stopPropagation(); handlers.setIsDragging(false);}} 
+            onDragEnter={(e) => {e.preventDefault(); e.stopPropagation(); handlers.setIsDragging(true);}}
+            onDragOver={(e) => {e.preventDefault(); e.stopPropagation();}}
+            onDragLeave={(e) => {e.preventDefault(); e.stopPropagation(); handlers.setIsDragging(false);}}
             onDrop={handlers.handleDrop}
+            role="application"
+            aria-label="Structure Insight 代码分析工具"
         >
             {/* Loading progress bar */}
             {state.isLoading && (
-                <div className="fixed top-0 left-0 right-0 z-50 h-0.5 bg-light-border dark:bg-dark-border overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-primary to-indigo-500 animate-pulse" style={{ width: '90%' }} />
+                <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-light-border dark:bg-dark-border overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-primary to-indigo-500 transition-all duration-300 ease-out" style={{ width: getProgressWidth(state.progressMessage) }} />
                 </div>
             )}
             <Header 
@@ -42,7 +56,6 @@ const App: React.FC = () => {
                 onCancel={handlers.handleCancel}
                 onSettings={() => handlers.setIsSettingsOpen(true)}
                 onToggleSearch={() => handlers.setIsSearchOpen(true)}
-                onToggleAiChat={() => handlers.setIsAiChatOpen(true)}
                 onToggleFileRank={() => handlers.setIsFileRankOpen(true)}
                 onShowStructure={() => handlers.setActiveView('structure')}
                 hasContent={!!state.processedData} 
@@ -57,8 +70,9 @@ const App: React.FC = () => {
                     fileCount={state.stats.fileCount}
                     totalLines={state.stats.totalLines}
                     totalChars={state.stats.totalChars}
-                    selectedFileName={state.selectedFile?.name}
+                    selectedFileName={state.selectedFile?.path.split('/').pop()}
                     isDark={state.isDark}
+                    processedData={state.processedData}
                 />
             )}
             
@@ -72,18 +86,21 @@ const App: React.FC = () => {
 
             <AnimatePresence>
                  {state.isSearchOpen && (
-                    <SearchDialog 
+                    <React.Suspense fallback={<SuspenseFallback />}>
+                    <SearchDialog
                         onClose={() => handlers.setIsSearchOpen(false)}
                         onSearch={handlers.handleSearch}
                         onNavigate={handlers.handleNavigate}
                         resultsCount={state.searchResults.length}
                         currentIndex={state.activeResultIndex}
                     />
+                    </React.Suspense>
                  )}
             </AnimatePresence>
-            
+
             <AnimatePresence>
                 {state.isFileRankOpen && (
+                    <React.Suspense fallback={<SuspenseFallback />}>
                     <FileRankDialog
                         isOpen={state.isFileRankOpen}
                         onClose={() => handlers.setIsFileRankOpen(false)}
@@ -93,17 +110,13 @@ const App: React.FC = () => {
                         onDeleteFile={handlers.handleDeleteFile}
                         onToggleExclude={handlers.handleToggleExclude}
                     />
+                    </React.Suspense>
                 )}
             </AnimatePresence>
 
-            <AIChat 
-                isOpen={state.isAiChatOpen}
-                onClose={() => handlers.setIsAiChatOpen(false)}
-                projectData={state.processedData}
-            />
-
             <AnimatePresence>
                 {state.isSettingsOpen && (
+                    <React.Suspense fallback={<SuspenseFallback />}>
                     <SettingsDialog
                         isOpen={state.isSettingsOpen}
                         onClose={() => handlers.setIsSettingsOpen(false)}
@@ -120,19 +133,32 @@ const App: React.FC = () => {
                         onSetMaxCharsThreshold={settings.setMaxCharsThreshold}
                         wordWrap={state.wordWrap}
                         onToggleWordWrap={() => settings.setWordWrap(!state.wordWrap)}
+                        includeFileSummary={state.includeFileSummary}
+                        onToggleIncludeFileSummary={() => settings.setIncludeFileSummary(!state.includeFileSummary)}
+                        includeDirectoryStructure={state.includeDirectoryStructure}
+                        onToggleIncludeDirectoryStructure={() => settings.setIncludeDirectoryStructure(!state.includeDirectoryStructure)}
+                        includeGitDiffs={state.includeGitDiffs}
+                        onToggleIncludeGitDiffs={() => settings.setIncludeGitDiffs(!state.includeGitDiffs)}
+                        exportHeaderText={state.exportHeaderText}
+                        onSetExportHeaderText={settings.setExportHeaderText}
+                        exportInstructionText={state.exportInstructionText}
+                        onSetExportInstructionText={settings.setExportInstructionText}
                     />
+                    </React.Suspense>
                 )}
             </AnimatePresence>
             <AnimatePresence>
                 {state.isShortcutsOpen && (
+                    <React.Suspense fallback={<SuspenseFallback />}>
                     <KeyboardShortcutsDialog
                         isOpen={state.isShortcutsOpen}
                         onClose={() => handlers.setIsShortcutsOpen(false)}
                     />
+                    </React.Suspense>
                 )}
             </AnimatePresence>
             <AnimatePresence>
-                {state.toastMessage && <Toast message={state.toastMessage} onDone={() => handlers.setToastMessage(null)} />}
+                {state.toastMessage && <Toast message={state.toastMessage} onDone={() => handlers.setToastMessage(null)} type={state.toastType} />}
             </AnimatePresence>
         </div>
     );

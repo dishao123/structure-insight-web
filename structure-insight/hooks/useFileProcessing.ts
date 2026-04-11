@@ -2,7 +2,6 @@
 import React from 'react';
 import { processDroppedItems, processFiles } from '../services/fileProcessor';
 import { ProcessedFiles } from '../types';
-import { usePersistentState } from './usePersistentState';
 
 interface FileProcessingProps {
     extractContent: boolean;
@@ -10,7 +9,7 @@ interface FileProcessingProps {
     setIsLoading: (loading: boolean) => void;
     setProgressMessage: (message: string) => void;
     setMobileView: (view: 'tree' | 'editor') => void;
-    handleShowToast: (message: string) => void;
+    handleShowToast: (message: string, type?: 'success' | 'error' | 'info') => void;
     isMobile: boolean;
     setSelectedFilePath: (path: string | null) => void;
     setActiveView: (view: 'structure' | 'code') => void;
@@ -27,12 +26,17 @@ export const useFileProcessing = ({
     setSelectedFilePath,
     setActiveView,
 }: FileProcessingProps) => {
-    const [processedData, setProcessedData] = usePersistentState<ProcessedFiles | null>('processedData', null);
+    const [processedData, setProcessedData] = React.useState<ProcessedFiles | null>(null);
     const [lastProcessedFiles, setLastProcessedFiles] = React.useState<File[] | null>(null);
     const abortControllerRef = React.useRef<AbortController | null>(null);
 
-    const handleProcessing = async (files: File[], isRefresh = false) => {
-        if (files.length === 0) return;
+    const handleProcessing = async (files: File[], isRefresh = false, controller?: AbortController) => {
+        if (files.length === 0) {
+            if (controller && abortControllerRef.current === controller) {
+                abortControllerRef.current = null;
+            }
+            return;
+        }
         
         if (!isRefresh) {
             setProcessedData(null);
@@ -40,8 +44,9 @@ export const useFileProcessing = ({
             setSelectedFilePath(null);
         }
 
-        abortControllerRef.current = new AbortController();
-        const signal = abortControllerRef.current.signal;
+        const activeController = controller ?? new AbortController();
+        abortControllerRef.current = activeController;
+        const signal = activeController.signal;
 
         setIsLoading(true);
         try {
@@ -55,12 +60,14 @@ export const useFileProcessing = ({
                 setProgressMessage("处理已取消。");
             } else {
                 console.error("Error processing files:", error);
-                handleShowToast("处理文件时发生错误。");
+                handleShowToast("处理文件时发生错误。", 'error');
             }
         } finally {
             setIsLoading(false);
             setTimeout(() => setProgressMessage(""), 2000);
-            abortControllerRef.current = null;
+            if (abortControllerRef.current === activeController) {
+                abortControllerRef.current = null;
+            }
         }
     };
 
@@ -81,25 +88,26 @@ export const useFileProcessing = ({
         e.preventDefault();
         e.stopPropagation();
         if (isLoading) return;
-        
-        abortControllerRef.current = new AbortController();
-        const signal = abortControllerRef.current.signal;
-        setIsLoading(true);
+
+        const dropController = new AbortController();
+        abortControllerRef.current = dropController;
+
         try {
-            const files = await processDroppedItems(e.dataTransfer.items, (msg) => setProgressMessage(msg), signal);
-            await handleProcessing(files);
+            const files = await processDroppedItems(e.dataTransfer.items, (msg) => setProgressMessage(msg), dropController.signal);
+            await handleProcessing(files, false, dropController);
         } catch (error: any) {
             if (error.name !== 'AbortError') {
                  console.error("Error processing dropped items:", error);
-                 handleShowToast("读取拖放项目时出错。");
+                 handleShowToast("读取拖放项目时出错。", 'error');
             }
         } finally {
-            setIsLoading(false);
-            setProgressMessage("");
+            if (abortControllerRef.current === dropController) {
+                abortControllerRef.current = null;
+            }
         }
     };
 
-    const handleRefresh = (processFn: (files: File[], isRefresh: boolean) => Promise<void>) => {
+    const handleRefresh = (processFn: (files: File[], isRefresh: boolean, controller?: AbortController) => Promise<void>) => {
         if (lastProcessedFiles) {
             processFn(lastProcessedFiles, true);
         }

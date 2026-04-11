@@ -5,23 +5,25 @@ import { useWindowSize } from './useWindowSize';
 import { useFileProcessing } from './useFileProcessing';
 import { useInteraction } from './useInteraction';
 import { useSearch } from './useSearch';
-import { generateFullOutput, buildASCIITree } from '../services/fileProcessor';
+import { buildASCIITree } from '../services/fileProcessor';
+import { generateRepomixPlainOutput } from '../services/repomixPlainOutput';
 import { ConfirmationState, FileContent } from '../types';
-import { marked } from 'marked';
 
 export const useAppLogic = (
-    codeViewRef: React.RefObject<HTMLDivElement>,
-    leftPanelRef: React.RefObject<HTMLDivElement>
+    codeViewRef: React.RefObject<HTMLDivElement | null>,
+    leftPanelRef: React.RefObject<HTMLDivElement | null>
 ) => {
     // --- UI & Shell State ---
     const [isDragging, setIsDragging] = React.useState(false);
     const [isLoading, setIsLoading] = React.useState(false);
+    const isLoadingRef = React.useRef(false);
+    React.useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
     const [progressMessage, setProgressMessage] = React.useState("");
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-    const [isAiChatOpen, setIsAiChatOpen] = React.useState(false);
     const [isFileRankOpen, setIsFileRankOpen] = React.useState(false);
     const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
     const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+    const [toastType, setToastType] = React.useState<'success' | 'error' | 'info'>('success');
     const [confirmation, setConfirmation] = React.useState<ConfirmationState>({isOpen: false, title: '', message: '', onConfirm: () => {}});
 
     // --- Persistent Settings ---
@@ -32,6 +34,11 @@ export const useAppLogic = (
     const [showCharCount, setShowCharCount] = usePersistentState('showCharCount', false);
     const [wordWrap, setWordWrap] = usePersistentState('wordWrap', false);
     const [maxCharsThreshold, setMaxCharsThreshold] = usePersistentState('maxCharsThreshold', 1000000);
+    const [includeFileSummary, setIncludeFileSummary] = usePersistentState('includeFileSummary', true);
+    const [includeDirectoryStructure, setIncludeDirectoryStructure] = usePersistentState('includeDirectoryStructure', true);
+    const [includeGitDiffs, setIncludeGitDiffs] = usePersistentState('includeGitDiffs', false);
+    const [exportHeaderText, setExportHeaderText] = usePersistentState('exportHeaderText', '');
+    const [exportInstructionText, setExportInstructionText] = usePersistentState('exportInstructionText', '');
 
     // --- Core Data & Selection State ---
     const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(null);
@@ -53,8 +60,9 @@ export const useAppLogic = (
         });
     }, [setRecentProjects]);
 
-    const handleShowToast = React.useCallback((message: string) => {
+    const handleShowToast = React.useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
         setToastMessage(message);
+        setToastType(type);
     }, []);
 
     // --- Child Hooks ---
@@ -120,7 +128,8 @@ export const useAppLogic = (
         isSearchOpen, setIsSearchOpen, searchResults, activeResultIndex,
         searchQuery, searchOptions, handleSearch, handleNavigate, resetSearch,
     } = useSearch({
-        processedData, isMobile, setMobileView, setSelectedFilePath, setActiveView,
+        processedData,
+        openFile: handleTabSelect,
     });
 
     const handleDirDoubleClick = React.useCallback(() => {
@@ -151,6 +160,19 @@ export const useAppLogic = (
         return processedData.fileContents.find(f => f.path === selectedFilePath) || null;
     }, [selectedFilePath, processedData]);
 
+    const projectContext = React.useMemo(() => {
+        if (!processedData) return null;
+
+        return generateRepomixPlainOutput(processedData, {
+            includeFileSummary,
+            includeDirectoryStructure,
+            includeFiles: true,
+            includeGitDiffs,
+            userProvidedHeader: exportHeaderText,
+            instruction: exportInstructionText,
+        });
+    }, [processedData, includeFileSummary, includeDirectoryStructure, includeGitDiffs, exportHeaderText, exportInstructionText]);
+
     // Calculate active match index relative to the current file
     const activeMatchIndexInFile = React.useMemo(() => {
         if (activeResultIndex === null || !selectedFilePath || searchResults.length === 0) return null;
@@ -178,10 +200,9 @@ export const useAppLogic = (
                 setSelectedFilePath(null);
                 setOpenFiles([]);
                 resetSearch();
-                setIsAiChatOpen(false);
                 setIsFileRankOpen(false);
                 setActiveView('structure');
-                handleShowToast("内容已重置。");
+                handleShowToast("内容已重置。", 'info');
             }
         });
     }, [handleShowToast, clearInteractionState, resetSearch, abortControllerRef, setProcessedData, setLastProcessedFiles]);
@@ -189,8 +210,10 @@ export const useAppLogic = (
     // --- Effects for Theme and Markdown ---
     React.useEffect(() => {
         document.documentElement.classList.toggle('dark', isDark);
-        (document.getElementById('hljs-light-theme') as HTMLLinkElement).disabled = isDark;
-        (document.getElementById('hljs-dark-theme') as HTMLLinkElement).disabled = !isDark;
+        const lightTheme = document.getElementById('hljs-light-theme') as HTMLLinkElement | null;
+        const darkTheme = document.getElementById('hljs-dark-theme') as HTMLLinkElement | null;
+        if (lightTheme) lightTheme.disabled = isDark;
+        if (darkTheme) darkTheme.disabled = !isDark;
     }, [isDark]);
 
     // --- General Action Handlers ---
@@ -207,19 +230,21 @@ export const useAppLogic = (
     }, []);
 
     const handleCopyAll = React.useCallback(() => {
-        if (processedData) navigator.clipboard.writeText(generateFullOutput(processedData.structureString, processedData.fileContents)).then(() => handleShowToast('已将所有内容复制到剪贴板！'));
-    }, [processedData, handleShowToast]);
+        if (!projectContext) return;
+
+        navigator.clipboard.writeText(projectContext).then(() => handleShowToast('已将所有内容复制到剪贴板！'));
+    }, [projectContext, handleShowToast]);
 
     const handleSave = React.useCallback(() => {
-        if (!processedData) return;
-        const blob = new Blob([generateFullOutput(processedData.structureString, processedData.fileContents)], { type: 'text/plain;charset=utf-8' });
+        if (!processedData || !projectContext) return;
+        const blob = new Blob([projectContext], { type: 'text/plain;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         const filename = (processedData.rootName || 'structure-insight').replace(/[\\/?<>:*|"']/g, '_') + '.txt';
         a.download = filename;
         a.click();
         URL.revokeObjectURL(a.href);
-    }, [processedData]);
+    }, [processedData, projectContext]);
 
     const handleMobileViewToggle = React.useCallback(() => {
         if (processedData) {
@@ -228,6 +253,8 @@ export const useAppLogic = (
     }, [processedData]);
 
     // --- Resizing Handlers ---
+    const resizeStateRef = React.useRef<{ isResizing: boolean }>({ isResizing: false });
+
     const handleResize = React.useCallback((e: MouseEvent) => {
         const panel = leftPanelRef.current;
         if (panel && panel.parentElement) {
@@ -237,12 +264,18 @@ export const useAppLogic = (
     }, [setPanelWidth, leftPanelRef]);
 
     const stopResize = React.useCallback(() => {
+        resizeStateRef.current.isResizing = false;
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
         window.removeEventListener('mousemove', handleResize);
         window.removeEventListener('mouseup', stopResize);
     }, [handleResize]);
 
     const handleMouseDownResize = React.useCallback((e: React.MouseEvent) => {
         e.preventDefault();
+        resizeStateRef.current.isResizing = true;
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
         window.addEventListener('mousemove', handleResize);
         window.addEventListener('mouseup', stopResize);
     }, [handleResize, stopResize]);
@@ -259,7 +292,6 @@ export const useAppLogic = (
             }
             if (e.key === 'Escape') {
                 if (isShortcutsOpen) { e.preventDefault(); setIsShortcutsOpen(false); }
-                else if (isAiChatOpen) { e.preventDefault(); setIsAiChatOpen(false); }
                 else if (isSearchOpen) { e.preventDefault(); setIsSearchOpen(false); }
                 else if (isFileRankOpen) { e.preventDefault(); setIsFileRankOpen(false); }
                 else if (isSettingsOpen) { e.preventDefault(); setIsSettingsOpen(false); }
@@ -268,7 +300,7 @@ export const useAppLogic = (
         };
         window.addEventListener('keydown', handleGlobalKeys);
         return () => window.removeEventListener('keydown', handleGlobalKeys);
-    }, [isSearchOpen, isSettingsOpen, isAiChatOpen, isFileRankOpen, isShortcutsOpen, isLoading, processedData, handleSave, handleFileSelect, handleCancel, selectedFilePath, closeTab]);
+    }, [isSearchOpen, isSettingsOpen, isFileRankOpen, isShortcutsOpen, isLoading, processedData, handleSave, handleFileSelect, handleCancel, selectedFilePath, closeTab]);
 
     // --- Memoized Stats ---
     const stats = React.useMemo(() => {
@@ -284,31 +316,35 @@ export const useAppLogic = (
     // --- Assemble Final Return Object ---
     return {
         state: {
-            processedData, isLoading, isDragging, progressMessage, isSettingsOpen, toastMessage,
+            processedData, isLoading, isDragging, progressMessage, isSettingsOpen, toastMessage, toastType,
             editingPath, markdownPreviewPaths, confirmation,
             isDark, panelWidth, extractContent, fontSize, showCharCount, maxCharsThreshold, wordWrap,
+            includeFileSummary, includeDirectoryStructure, includeGitDiffs,
+            exportHeaderText, exportInstructionText,
             lastProcessedFiles, mobileView, stats,
-            isSearchOpen, isFileRankOpen, isShortcutsOpen, searchResults, activeResultIndex, isMobile, isAiChatOpen,
+            isSearchOpen, isFileRankOpen, isShortcutsOpen, searchResults, activeResultIndex, isMobile,
             selectedFilePath, selectedFile, activeView,
             openFiles,
             searchQuery, searchOptions, activeMatchIndexInFile,
             recentProjects,
+            projectContext,
         },
         handlers: {
-            setIsDragging, handleDrop: (e: React.DragEvent) => { setIsDragging(false); handleDrop(e, isLoading); },
+            setIsDragging, handleDrop: (e: React.DragEvent) => { setIsDragging(false); handleDrop(e, isLoadingRef.current); },
             handleFileSelect, handleCopyAll, handleSave, handleReset, handleRefresh: () => handleRefresh(handleProcessing), handleCancel,
             setIsSettingsOpen, setToastMessage, setConfirmation,
             handleDeleteFile, handleFileTreeSelect: handleTabSelect, closeTab, setEditingPath, handleSaveEdit, handleToggleMarkdownPreview,
             handleMouseDownResize,
             handleMobileViewToggle,
-            setIsSearchOpen, setIsFileRankOpen, setIsShortcutsOpen, handleSearch, handleNavigate, setIsAiChatOpen,
+            setIsSearchOpen, setIsFileRankOpen, setIsShortcutsOpen, handleSearch, handleNavigate,
             setActiveView,
             handleCopyPath,
             handleToggleExclude,
             handleDirDoubleClick,
         },
         settings: {
-            setIsDark, setExtractContent, setFontSize, handleClearCache, setShowCharCount, setMaxCharsThreshold, setWordWrap
+            setIsDark, setExtractContent, setFontSize, handleClearCache, setShowCharCount, setMaxCharsThreshold, setWordWrap,
+            setIncludeFileSummary, setIncludeDirectoryStructure, setIncludeGitDiffs, setExportHeaderText, setExportInstructionText,
         },
     };
 };

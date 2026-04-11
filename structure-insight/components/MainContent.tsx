@@ -13,8 +13,8 @@ import { FileNode } from '../types';
 
 interface MainContentProps {
     logic: ReturnType<typeof useAppLogic>;
-    codeViewRef: React.RefObject<HTMLDivElement>;
-    leftPanelRef: React.RefObject<HTMLDivElement>;
+    codeViewRef: React.RefObject<HTMLDivElement | null>;
+    leftPanelRef: React.RefObject<HTMLDivElement | null>;
 }
 
 /** Recursively collect unique file extensions from a tree */
@@ -58,9 +58,13 @@ function filterTreeByExtension(nodes: FileNode[], ext: string | null): FileNode[
 
 const LoadingIndicator: React.FC<{message: string}> = ({message}) => (
      <div className="flex flex-col items-center justify-center h-full text-center p-4">
-        <i className="fa-solid fa-spinner fa-spin text-4xl text-primary mb-4"></i>
-        <p className="text-lg font-semibold">正在处理文件...</p>
-        <p className="text-sm text-light-subtle-text dark:text-dark-subtle-text mt-2 max-w-xs truncate">{message}</p>
+        <div className="flex space-x-2 mb-6">
+            {[0, 1, 2].map(i => (
+                <div key={i} className="w-3 h-3 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+        </div>
+        <p className="text-lg font-semibold mb-2">正在处理文件...</p>
+        <p className="text-sm text-light-subtle-text dark:text-dark-subtle-text max-w-xs truncate">{message}</p>
     </div>
 );
 
@@ -133,7 +137,6 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                     onFileSelect={handlers.handleFileTreeSelect}
                                     onDeleteFile={handlers.handleDeleteFile}
                                     onCopyPath={handlers.handleCopyPath}
-                                                wordWrap={state.wordWrap}
                                     onToggleExclude={handlers.handleToggleExclude}
                                     onDirDoubleClick={handlers.handleDirDoubleClick}
                                     selectedFilePath={state.selectedFilePath}
@@ -215,7 +218,6 @@ const MainContent: React.FC<MainContentProps> = ({ logic, codeViewRef, leftPanel
                                         onFileSelect={handlers.handleFileTreeSelect}
                                         onDeleteFile={handlers.handleDeleteFile}
                                         onCopyPath={handlers.handleCopyPath}
-                                                wordWrap={state.wordWrap}
                                         onToggleExclude={handlers.handleToggleExclude}
                                         onDirDoubleClick={handlers.handleDirDoubleClick}
                                         selectedFilePath={state.selectedFilePath}

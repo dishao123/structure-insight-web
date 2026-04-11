@@ -18,18 +18,33 @@ interface SettingsDialogProps {
     onSetMaxCharsThreshold: (val: number) => void;
     wordWrap: boolean;
     onToggleWordWrap: () => void;
+    includeFileSummary: boolean;
+    onToggleIncludeFileSummary: () => void;
+    includeDirectoryStructure: boolean;
+    onToggleIncludeDirectoryStructure: () => void;
+    includeGitDiffs: boolean;
+    onToggleIncludeGitDiffs: () => void;
+    exportHeaderText: string;
+    onSetExportHeaderText: (value: string) => void;
+    exportInstructionText: string;
+    onSetExportInstructionText: (value: string) => void;
 }
 
 const SettingsDialog: React.FC<SettingsDialogProps> = ({
     isOpen, onClose, isDarkTheme, onToggleTheme, extractContent, onToggleExtractContent, fontSize, onSetFontSize, onClearCache,
-    showCharCount, onToggleShowCharCount, maxCharsThreshold, onSetMaxCharsThreshold, wordWrap, onToggleWordWrap
+    showCharCount, onToggleShowCharCount, maxCharsThreshold, onSetMaxCharsThreshold, wordWrap, onToggleWordWrap,
+    includeFileSummary, onToggleIncludeFileSummary, includeDirectoryStructure, onToggleIncludeDirectoryStructure,
+    includeGitDiffs, onToggleIncludeGitDiffs,
+    exportHeaderText, onSetExportHeaderText, exportInstructionText, onSetExportInstructionText
 }) => {
     const dialogRef = React.useRef<HTMLDivElement>(null);
     const [stars, setStars] = React.useState<number | null>(null);
+    const [starsLoading, setStarsLoading] = React.useState(false);
 
     React.useEffect(() => {
         if (isOpen) {
             // Fetch GitHub stars when the dialog opens
+            setStarsLoading(true);
             fetch('https://api.github.com/repos/yeahhe365/Structure-Insight')
                 .then(res => res.json())
                 .then(data => {
@@ -37,7 +52,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         setStars(data.stargazers_count);
                     }
                 })
-                .catch(err => console.error("Failed to fetch GitHub stars:", err));
+                .catch(err => console.error("Failed to fetch GitHub stars:", err))
+                .finally(() => setStarsLoading(false));
 
             const handleKeyDown = (e: KeyboardEvent) => {
                 if (e.key === 'Escape') onClose();
@@ -49,7 +65,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
     
     if (!isOpen) return null;
     
-    const appVersion = "5.2.1"; 
+    const appVersion = "5.3.0";
 
     // Helper components for consistency
     const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -183,6 +199,100 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         </div>
                     </div>
 
+                    <div>
+                        <SectionTitle>导出输出</SectionTitle>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-9 h-9 rounded-full bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shadow-sm">
+                                        <i className="fa-solid fa-file-lines"></i>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label htmlFor="file-summary-toggle" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
+                                            文件摘要
+                                        </label>
+                                        <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">在导出上下文中包含 Repomix 风格的摘要部分</span>
+                                    </div>
+                                </div>
+                                <Switch id="file-summary-toggle" checked={includeFileSummary} onChange={onToggleIncludeFileSummary} />
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-9 h-9 rounded-full bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400 shadow-sm">
+                                        <i className="fa-solid fa-sitemap"></i>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label htmlFor="directory-structure-toggle" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
+                                            包含目录结构
+                                        </label>
+                                        <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">在导出上下文中保留目录树结构</span>
+                                    </div>
+                                </div>
+                                <Switch id="directory-structure-toggle" checked={includeDirectoryStructure} onChange={onToggleIncludeDirectoryStructure} />
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-sm">
+                                        <i className="fa-solid fa-code-compare"></i>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label htmlFor="git-diffs-toggle" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
+                                            Git Diffs
+                                        </label>
+                                        <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">在导出上下文中包含基于当前编辑的差异</span>
+                                    </div>
+                                </div>
+                                <Switch id="git-diffs-toggle" checked={includeGitDiffs} onChange={onToggleIncludeGitDiffs} />
+                            </div>
+
+                            <div className="flex flex-col p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
+                                <div className="flex items-center space-x-3 mb-2">
+                                    <div className="w-9 h-9 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400 shadow-sm">
+                                        <i className="fa-solid fa-heading"></i>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label htmlFor="export-header-text" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
+                                            User Provided Header
+                                        </label>
+                                        <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">为空时不输出该段</span>
+                                    </div>
+                                </div>
+                                <textarea
+                                    id="export-header-text"
+                                    value={exportHeaderText}
+                                    onChange={(e) => onSetExportHeaderText(e.target.value)}
+                                    rows={3}
+                                    className="w-full px-3 py-2 text-sm bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y"
+                                    placeholder="Optional context shown in the User Provided Header section"
+                                />
+                            </div>
+
+                            <div className="flex flex-col p-2 rounded-lg hover:bg-light-bg dark:hover:bg-dark-bg/50 transition-colors -mx-2">
+                                <div className="flex items-center space-x-3 mb-2">
+                                    <div className="w-9 h-9 rounded-full bg-fuchsia-100 dark:bg-fuchsia-900/30 flex items-center justify-center text-fuchsia-600 dark:text-fuchsia-400 shadow-sm">
+                                        <i className="fa-solid fa-list-check"></i>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label htmlFor="export-instruction-text" className="text-sm font-medium text-light-text dark:text-dark-text cursor-pointer select-none">
+                                            Instruction
+                                        </label>
+                                        <span className="text-xs text-light-subtle-text dark:text-dark-subtle-text">为空时不输出该段</span>
+                                    </div>
+                                </div>
+                                <textarea
+                                    id="export-instruction-text"
+                                    value={exportInstructionText}
+                                    onChange={(e) => onSetExportInstructionText(e.target.value)}
+                                    rows={3}
+                                    className="w-full px-3 py-2 text-sm bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y"
+                                    placeholder="Optional guidance shown in the Instruction section"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     {/* General Section */}
                     <div>
                         <SectionTitle>通用</SectionTitle>
@@ -282,7 +392,11 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 >
                                     <i className="fa-brands fa-github text-sm"></i>
                                     <span>GitHub</span>
-                                    {stars !== null && (
+                                    {starsLoading ? (
+                                        <span className="flex items-center pl-2 border-l border-light-border dark:border-dark-border ml-2">
+                                            <i className="fa-solid fa-spinner fa-spin text-light-subtle-text mr-1 text-[10px]"></i>
+                                        </span>
+                                    ) : stars !== null && (
                                         <span className="flex items-center pl-2 border-l border-light-border dark:border-dark-border ml-2 group-hover:border-primary/30">
                                             <i className="fa-solid fa-star text-yellow-500 mr-1 text-[10px]"></i>
                                             {stars.toLocaleString()}

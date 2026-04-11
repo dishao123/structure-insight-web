@@ -13,6 +13,7 @@ export interface FileNode {
 export interface FileContent {
   path: string;
   content: string;
+  originalContent?: string;
   language: string;
   stats: {
     lines: number;
@@ -26,6 +27,11 @@ export interface ProcessedFiles {
     fileContents: FileContent[];
     structureString: string;
     rootName: string;
+    exportMetadata?: {
+      usesDefaultIgnorePatterns: boolean;
+      usesGitignorePatterns: boolean;
+      sortsByGitChangeCount: boolean;
+    };
 }
 
 export interface SearchOptions {

@@ -2,33 +2,48 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ScrollToTopButtonProps {
-  targetRef: React.RefObject<HTMLElement>;
+  targetRef: React.RefObject<HTMLElement | null>;
 }
 
 const ScrollToTopButton: React.FC<ScrollToTopButtonProps> = ({ targetRef }) => {
   const [isVisible, setIsVisible] = React.useState(false);
 
   React.useEffect(() => {
-    const target = targetRef.current;
-    if (!target) {
-      setIsVisible(false);
-      return;
-    }
+    const checkAndAttach = () => {
+      const target = targetRef.current;
+      if (!target) return undefined;
 
-    const toggleVisibility = () => {
-      if (target.scrollTop > 300) {
-        setIsVisible(true);
-      } else {
-        setIsVisible(false);
-      }
+      const toggleVisibility = () => {
+        setIsVisible(target.scrollTop > 300);
+      };
+
+      target.addEventListener('scroll', toggleVisibility);
+      toggleVisibility();
+
+      // Return cleanup function stored for later
+      return () => target.removeEventListener('scroll', toggleVisibility);
     };
 
-    target.addEventListener('scroll', toggleVisibility);
-    toggleVisibility(); // Check on mount/attach
-    
-    return () => target.removeEventListener('scroll', toggleVisibility);
-    // This effect needs to re-run if the ref's current value changes from null to an element.
-  }, [targetRef, targetRef.current]);
+    let cleanup: (() => void) | undefined = checkAndAttach();
+
+    if (!cleanup) {
+      // Use MutationObserver to detect when the element appears in the DOM
+      const observer = new MutationObserver(() => {
+        const result = checkAndAttach();
+        if (result) {
+          cleanup = result;
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => {
+        observer.disconnect();
+        cleanup?.();
+      };
+    }
+
+    return cleanup;
+  }, [targetRef]);
 
   const scrollToTop = () => {
     targetRef.current?.scrollTo({
