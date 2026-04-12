@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import FileTree from './FileTree';
 import type { FileNode } from '../types';
 
@@ -29,6 +29,10 @@ const makeLargeTree = (): FileNode[] => [
   },
 ];
 
+afterEach(() => {
+  cleanup();
+});
+
 describe('FileTree virtualization', () => {
   it('passes the flattened visible rows into the virtual list instead of mounting the full tree', () => {
     render(
@@ -46,5 +50,78 @@ describe('FileTree virtualization', () => {
     expect(screen.getByTestId('virtuoso').getAttribute('data-count')).toBe('201');
     expect(screen.getByText('file-0.ts')).not.toBeNull();
     expect(screen.queryByText('file-199.ts')).toBeNull();
+  });
+
+  it('removes descendant rows when collapsing a directory', () => {
+    render(
+      <FileTree
+        nodes={[
+          {
+            name: 'src',
+            path: 'src',
+            isDirectory: true,
+            children: [
+              {
+                name: 'index.ts',
+                path: 'src/index.ts',
+                isDirectory: false,
+                children: [],
+                status: 'processed',
+              },
+            ],
+          },
+        ]}
+        onFileSelect={vi.fn()}
+        onDeleteFile={vi.fn()}
+        onCopyPath={vi.fn()}
+        onToggleExclude={vi.fn()}
+        selectedFilePath={null}
+        showCharCount={false}
+      />
+    );
+
+    expect(screen.getByText('index.ts')).not.toBeNull();
+    fireEvent.click(screen.getByText('src'));
+    expect(screen.queryByText('index.ts')).toBeNull();
+  });
+
+  it('navigates visible rows with the keyboard and opens processed files on Enter', () => {
+    const onFileSelect = vi.fn();
+
+    render(
+      <FileTree
+        nodes={[
+          {
+            name: 'src',
+            path: 'src',
+            isDirectory: true,
+            children: [
+              {
+                name: 'index.ts',
+                path: 'src/index.ts',
+                isDirectory: false,
+                children: [],
+                status: 'processed',
+              },
+            ],
+          },
+        ]}
+        onFileSelect={onFileSelect}
+        onDeleteFile={vi.fn()}
+        onCopyPath={vi.fn()}
+        onToggleExclude={vi.fn()}
+        selectedFilePath={null}
+        showCharCount={false}
+      />
+    );
+
+    const tree = screen.getByRole('tree', { name: '资源管理器' });
+    tree.focus();
+
+    fireEvent.keyDown(tree, { key: 'ArrowDown' });
+    fireEvent.keyDown(tree, { key: 'ArrowDown' });
+    fireEvent.keyDown(tree, { key: 'Enter' });
+
+    expect(onFileSelect).toHaveBeenCalledWith('src/index.ts');
   });
 });
