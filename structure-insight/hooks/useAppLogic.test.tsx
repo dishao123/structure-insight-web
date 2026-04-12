@@ -95,11 +95,40 @@ vi.mock('./useSearch', () => ({
     }),
 }));
 
+function createLocalStorageMock(): Storage {
+    const store = new Map<string, string>();
+
+    return {
+        get length() {
+            return store.size;
+        },
+        clear: vi.fn(() => {
+            store.clear();
+        }),
+        getItem: vi.fn((key: string) => {
+            return store.has(key) ? store.get(key)! : null;
+        }),
+        key: vi.fn((index: number) => {
+            return Array.from(store.keys())[index] ?? null;
+        }),
+        removeItem: vi.fn((key: string) => {
+            store.delete(key);
+        }),
+        setItem: vi.fn((key: string, value: string) => {
+            store.set(key, String(value));
+        }),
+    } as Storage;
+}
+
 describe('useAppLogic', () => {
     beforeEach(() => {
-        window.localStorage.clear();
-        generateRepomixPlainOutputMock.mockClear();
         vi.restoreAllMocks();
+        generateRepomixPlainOutputMock.mockClear();
+
+        Object.defineProperty(window, 'localStorage', {
+            configurable: true,
+            value: createLocalStorageMock(),
+        });
 
         Object.defineProperty(navigator, 'clipboard', {
             configurable: true,
