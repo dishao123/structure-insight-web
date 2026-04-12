@@ -1,30 +1,55 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Structure Insight App
 
-# Run and deploy Structure Insight
+Browser-first codebase analysis and export tooling for sharing repository context with AI systems.
 
-This contains everything you need to run your app locally.
+## What This App Does
 
-## Run Locally
+- Imports folders and `.zip` archives entirely in the browser
+- Builds a navigable tree view and code viewer
+- Lets you edit files in-app and export the current state
+- Supports layered `.gitignore` and `.ignore` filtering
+- Estimates token usage for loaded files
+- Flags likely sensitive content before you copy or save exports
+- Shows a dedicated security findings dialog for reviewing warning details
+- Can split large exports into multiple files during save
+- Registers as a PWA and caches the app shell for offline reuse after the first online load
+- Uses local build-time assets instead of runtime CDN dependencies for core UI styling, icons, and syntax highlighting
+- Splits heavier views like the file tree and code viewer into separate chunks to keep the initial app shell lighter
 
-**Prerequisites:**  Node.js
+## Development
 
+Run all commands from this directory:
 
-1. Install dependencies:
-   `npm install`
-2. Run the app:
-   `npm run dev`
+```bash
+npm install
+npm run dev
+```
 
-## Deployment Troubleshooting
+Useful scripts:
 
-### Error: "Cannot find cwd: .../structure-insight-web"
+```bash
+npm run typecheck
+npm test -- --run
+npm run build
+npm run check
+```
 
-If you encounter an error like `Error: Cannot find cwd: /opt/buildhome/repo/structure-insight-web` during deployment (e.g., on Cloudflare Pages):
+## Repository Notes
 
-This indicates the deployment service is expecting the project files to be in a subdirectory named `structure-insight-web`, but they are in the root of your repository.
+- The repository root contains the public project README.
+- CI runs from the repository root but uses this directory as the working directory.
+- Cloudflare Pages or similar platforms should point their root/build directory to `structure-insight/`.
 
-**Fix:**
-1. Go to your deployment project settings (e.g., Cloudflare Pages > Settings > Build & deployments).
-2. Locate the **Root Directory** setting in "Build configurations".
-3. Change it to `/` (empty) to indicate the project is in the root directory.
+## Export Semantics
+
+- `Edited Changes` represents differences between the imported file contents and your in-app edits.
+- It does **not** read the local git working tree or staged diff.
+- Token counts are estimates intended for planning and comparison, not exact model-token guarantees.
+
+## Offline Notes
+
+- The app shell no longer depends on external CDN resources in `index.html`.
+- Core styling is compiled locally with Tailwind.
+- Icons and syntax-highlighting resources are bundled or served from local project assets.
+- Font Awesome is reduced to the local solid subset with `woff2` output only.
+- First-load network access is still needed for the initial installation, but repeat visits can rely on cached local assets.

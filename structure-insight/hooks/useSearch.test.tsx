@@ -33,9 +33,15 @@ const PROJECT_DATA: ProcessedFiles = {
             path: 'src/example.ts',
             content: 'const needle = true;',
             language: 'typescript',
-            stats: { lines: 1, chars: 20 },
+            stats: { lines: 1, chars: 20, estimatedTokens: 5 },
         },
     ],
+    analysisSummary: {
+        totalEstimatedTokens: 5,
+        securityFindingCount: 0,
+        scannedFileCount: 1,
+    },
+    securityFindings: [],
 };
 
 describe('useSearch', () => {

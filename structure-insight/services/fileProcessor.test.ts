@@ -21,7 +21,10 @@ describe('processDroppedItems', () => {
 
         await expect(
             processDroppedItems(items, vi.fn(), undefined as unknown as AbortSignal)
-        ).resolves.toHaveLength(1);
+        ).resolves.toMatchObject({
+            files: [expect.any(File)],
+            emptyDirectoryPaths: [],
+        });
     });
 });
 
@@ -59,5 +62,66 @@ describe('processFiles', () => {
             usesGitignorePatterns: true,
             sortsByGitChangeCount: false,
         });
+        expect(result.analysisSummary).toEqual({
+            totalEstimatedTokens: 10,
+            securityFindingCount: 0,
+            scannedFileCount: 2,
+        });
+        expect(result.fileContents[1].stats.estimatedTokens).toBe(7);
+    });
+
+    it('supports layered .gitignore and .ignore rules while aggregating security findings', async () => {
+        const rootGitignore = new File(['dist/\n'], '.gitignore', { type: 'text/plain' });
+        Object.defineProperty(rootGitignore, 'webkitRelativePath', {
+            value: 'demo/.gitignore',
+            configurable: true,
+        });
+
+        const nestedIgnore = new File(['secret.ts\n!keep-secret.ts\n'], '.ignore', { type: 'text/plain' });
+        Object.defineProperty(nestedIgnore, 'webkitRelativePath', {
+            value: 'demo/src/.ignore',
+            configurable: true,
+        });
+
+        const distFile = new File(['export const build = true;\n'], 'out.ts', { type: 'text/plain' });
+        Object.defineProperty(distFile, 'webkitRelativePath', {
+            value: 'demo/dist/out.ts',
+            configurable: true,
+        });
+
+        const ignoredNestedFile = new File(['export const secret = true;\n'], 'secret.ts', { type: 'text/plain' });
+        Object.defineProperty(ignoredNestedFile, 'webkitRelativePath', {
+            value: 'demo/src/secret.ts',
+            configurable: true,
+        });
+
+        const restoredNestedFile = new File(['export const keep = true;\n'], 'keep-secret.ts', { type: 'text/plain' });
+        Object.defineProperty(restoredNestedFile, 'webkitRelativePath', {
+            value: 'demo/src/keep-secret.ts',
+            configurable: true,
+        });
+
+        const envFile = new File(['OPENAI_API_KEY="sk-proj-abcdefghijklmnopqrstuvwxyz123456"\n'], '.env', { type: 'text/plain' });
+        Object.defineProperty(envFile, 'webkitRelativePath', {
+            value: 'demo/src/.env',
+            configurable: true,
+        });
+
+        const result = await processFiles(
+            [rootGitignore, nestedIgnore, distFile, ignoredNestedFile, restoredNestedFile, envFile],
+            vi.fn(),
+            true,
+            100_000,
+            new AbortController().signal
+        );
+
+        expect(result.fileContents.map(file => file.path)).toEqual([
+            'demo/.gitignore',
+            'demo/src/.env',
+            'demo/src/.ignore',
+            'demo/src/keep-secret.ts',
+        ]);
+        expect(result.analysisSummary?.securityFindingCount).toBe(1);
+        expect(result.securityFindings?.[0].ruleId).toBe('openai-api-key');
     });
 });

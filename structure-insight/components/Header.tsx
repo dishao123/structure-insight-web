@@ -33,7 +33,7 @@ const Header: React.FC<HeaderProps> = ({
       </div>
       <div className="flex items-center space-x-2" role="toolbar" aria-label="工具栏">
         <button onClick={onOpenFolder} className={buttonClass} title="打开文件夹 (Ctrl+O)" disabled={isLoading}>
-          <i className={`fa-regular fa-folder-open ${iconClass}`}></i>
+          <i className={`fa-solid fa-folder-open ${iconClass}`}></i>
         </button>
         <button onClick={onToggleSearch} className={buttonClass} title="在文件中查找 (Ctrl+F)" disabled={!hasContent || isLoading}>
             <i className={`fa-solid fa-search ${iconClass}`}></i>

@@ -1,5 +1,6 @@
 import { structuredPatch } from 'diff';
 import type { FileContent, FileNode, ProcessedFiles } from '../types';
+import { summarizeAnalysis } from './analysisSummary';
 
 const PLAIN_SEPARATOR = '='.repeat(16);
 const PLAIN_LONG_SEPARATOR = '='.repeat(64);
@@ -31,7 +32,7 @@ const SUMMARY_USAGE_GUIDELINES = [
     '  the same level of security as you would the original repository.',
 ].join('\n');
 const BASE_SUMMARY_NOTES = [
-    "- Some files may have been excluded based on .gitignore rules and Repomix's configuration",
+    "- Some files may have been excluded based on .gitignore/.ignore rules and Repomix's configuration",
     '- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files',
 ];
 
@@ -57,7 +58,7 @@ function buildSummaryNotes(processedData: ProcessedFiles): string {
     const notes = [...BASE_SUMMARY_NOTES];
 
     if (metadata.usesGitignorePatterns) {
-        notes.push('- Files matching patterns in .gitignore are excluded');
+        notes.push('- Files matching patterns in .gitignore or .ignore are excluded');
     }
 
     if (metadata.usesDefaultIgnorePatterns) {
@@ -96,7 +97,7 @@ function buildDirectoryLines(nodes: FileNode[], indent = ''): string[] {
 }
 
 function buildRepomixDirectoryStructure(processedData: ProcessedFiles): string {
-    if (processedData.treeData.length > 1 && processedData.treeData.every(node => node.isDirectory)) {
+    if (['Project', '项目'].includes(processedData.rootName) && processedData.treeData.length > 1 && processedData.treeData.every(node => node.isDirectory)) {
         return sortNodes(processedData.treeData)
             .map(node => `[${node.name}]/\n${buildDirectoryLines(node.children, '  ').join('\n')}`)
             .join('\n\n');
@@ -149,11 +150,21 @@ function buildGitDiffSection(activeFiles: FileContent[]): string | null {
     return patches.join('\n\n');
 }
 
+function getAnalysisSummary(processedData: ProcessedFiles, activeFiles: FileContent[]) {
+    return processedData.analysisSummary ?? summarizeAnalysis(activeFiles).analysisSummary;
+}
+
+function getSecurityFindings(processedData: ProcessedFiles, activeFiles: FileContent[]) {
+    return processedData.securityFindings ?? activeFiles.flatMap(file => file.securityFindings ?? []);
+}
+
 export function generateRepomixPlainOutput(
     processedData: ProcessedFiles,
     options: RepomixPlainOutputOptions
 ): string {
     const activeFiles = getActiveFiles(processedData.fileContents);
+    const analysisSummary = getAnalysisSummary(processedData, activeFiles);
+    const securityFindings = getSecurityFindings(processedData, activeFiles);
     const lines: string[] = [];
 
     if (options.includeFileSummary) {
@@ -195,6 +206,18 @@ export function generateRepomixPlainOutput(
         );
     }
 
+    lines.push(
+        PLAIN_LONG_SEPARATOR,
+        'Repository Analysis',
+        PLAIN_LONG_SEPARATOR,
+        `Files: ${activeFiles.length}`,
+        `Lines: ${activeFiles.reduce((sum, file) => sum + file.stats.lines, 0)}`,
+        `Characters: ${activeFiles.reduce((sum, file) => sum + file.stats.chars, 0)}`,
+        `Estimated Tokens: ${analysisSummary.totalEstimatedTokens}`,
+        `Sensitive Findings: ${analysisSummary.securityFindingCount}`,
+        ''
+    );
+
     if (options.userProvidedHeader?.trim()) {
         lines.push(
             PLAIN_LONG_SEPARATOR,
@@ -224,13 +247,25 @@ export function generateRepomixPlainOutput(
         }
     }
 
+    if (securityFindings.length > 0) {
+        lines.push(
+            PLAIN_LONG_SEPARATOR,
+            'Security Warnings',
+            PLAIN_LONG_SEPARATOR,
+            ...securityFindings.map(
+                finding => `- [${finding.severity}] ${finding.filePath}: ${finding.message}`
+            ),
+            ''
+        );
+    }
+
     if (options.includeGitDiffs) {
         const gitDiffs = buildGitDiffSection(activeFiles);
 
         if (gitDiffs) {
             lines.push(
                 PLAIN_LONG_SEPARATOR,
-                'Git Diffs',
+                'Edited Changes',
                 PLAIN_LONG_SEPARATOR,
                 gitDiffs,
                 ''

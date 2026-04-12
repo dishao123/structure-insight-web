@@ -34,17 +34,23 @@ const PROJECT_DATA: ProcessedFiles = {
             content: 'console.log("demo");\n',
             originalContent: 'console.log("demo");\n',
             language: 'typescript',
-            stats: { lines: 1, chars: 21 },
+            stats: { lines: 1, chars: 21, estimatedTokens: 6 },
         },
     ],
+    analysisSummary: {
+        totalEstimatedTokens: 6,
+        securityFindingCount: 0,
+        scannedFileCount: 1,
+    },
+    securityFindings: [],
 };
 
-const { generateRepomixPlainOutputMock } = vi.hoisted(() => ({
-    generateRepomixPlainOutputMock: vi.fn(() => 'PACKED OUTPUT'),
+const { buildExportOutputMock } = vi.hoisted(() => ({
+    buildExportOutputMock: vi.fn(() => Promise.resolve('PACKED OUTPUT')),
 }));
 
-vi.mock('../services/repomixPlainOutput', () => ({
-    generateRepomixPlainOutput: generateRepomixPlainOutputMock,
+vi.mock('../services/exportBuilder', () => ({
+    buildExportOutput: buildExportOutputMock,
 }));
 
 vi.mock('./useWindowSize', () => ({
@@ -55,7 +61,8 @@ vi.mock('./useFileProcessing', () => ({
     useFileProcessing: () => ({
         processedData: PROJECT_DATA,
         setProcessedData: vi.fn(),
-        lastProcessedFiles: null,
+        lastProcessedFiles: [new File(['demo'], 'app.ts')],
+        lastEmptyDirectoryPaths: ['demo/empty-folder'],
         setLastProcessedFiles: vi.fn(),
         handleProcessing: vi.fn(),
         handleFileSelect: vi.fn(),
@@ -123,7 +130,7 @@ function createLocalStorageMock(): Storage {
 describe('useAppLogic', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
-        generateRepomixPlainOutputMock.mockClear();
+        buildExportOutputMock.mockClear();
 
         Object.defineProperty(window, 'localStorage', {
             configurable: true,
@@ -150,7 +157,7 @@ describe('useAppLogic', () => {
         vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     });
 
-    it('defaults output settings to include file summary and directory structure', () => {
+    it('defaults the new export settings to the expected values', () => {
         const codeViewRef = React.createRef<HTMLDivElement>();
         const leftPanelRef = React.createRef<HTMLDivElement>();
 
@@ -159,11 +166,21 @@ describe('useAppLogic', () => {
         expect(result.current.state.includeFileSummary).toBe(true);
         expect(result.current.state.includeDirectoryStructure).toBe(true);
         expect(result.current.state.includeGitDiffs).toBe(false);
+        expect(result.current.state.exportFormat).toBe('plain');
+        expect(result.current.state.includePatterns).toBe('');
+        expect(result.current.state.ignorePatterns).toBe('');
+        expect(result.current.state.useDefaultPatterns).toBe(true);
+        expect(result.current.state.useGitignore).toBe(true);
+        expect(result.current.state.includeEmptyDirectories).toBe(false);
+        expect(result.current.state.showLineNumbers).toBe(false);
+        expect(result.current.state.removeEmptyLines).toBe(false);
+        expect(result.current.state.truncateBase64).toBe(false);
+        expect(result.current.state.exportSplitMaxChars).toBe(0);
         expect(result.current.state.exportHeaderText).toBe('');
         expect(result.current.state.exportInstructionText).toBe('');
     });
 
-    it('uses the shared plain output for copy and save actions', async () => {
+    it('uses the async export builder for copy and save actions', async () => {
         const codeViewRef = React.createRef<HTMLDivElement>();
         const leftPanelRef = React.createRef<HTMLDivElement>();
         const OriginalBlob = globalThis.Blob;
@@ -184,31 +201,54 @@ describe('useAppLogic', () => {
         try {
             const { result } = renderHook(() => useAppLogic(codeViewRef, leftPanelRef));
 
-            expect(generateRepomixPlainOutputMock).toHaveBeenCalledWith(PROJECT_DATA, {
-                includeFileSummary: true,
-                includeDirectoryStructure: true,
-                includeFiles: true,
-                includeGitDiffs: false,
-                userProvidedHeader: '',
-                instruction: '',
-            });
-
             await act(async () => {
-                result.current.handlers.handleCopyAll();
+                await result.current.handlers.handleCopyAll();
             });
 
+            expect(buildExportOutputMock).toHaveBeenCalledWith(expect.objectContaining({
+                currentData: PROJECT_DATA,
+                emptyDirectoryPaths: ['demo/empty-folder'],
+                exportOptions: expect.objectContaining({
+                    format: 'plain',
+                    includeFileSummary: true,
+                    includeDirectoryStructure: true,
+                    includeFiles: true,
+                    includeGitDiffs: false,
+                    includePatterns: '',
+                    ignorePatterns: '',
+                    useDefaultPatterns: true,
+                    useGitignore: true,
+                    includeEmptyDirectories: false,
+                    showLineNumbers: false,
+                    removeEmptyLines: false,
+                    truncateBase64: false,
+                    userProvidedHeader: '',
+                    instruction: '',
+                }),
+            }));
             expect(navigator.clipboard.writeText).toHaveBeenCalledWith('PACKED OUTPUT');
 
-            act(() => {
-                result.current.handlers.handleSave();
+            await act(async () => {
+                await result.current.handlers.handleSave();
             });
 
             const createObjectURLMock = vi.mocked(URL.createObjectURL);
             expect(createObjectURLMock).toHaveBeenCalledTimes(1);
-            const exportedBlob = createObjectURLMock.mock.calls[0][0] as FakeBlob;
-
+            const exportedBlob = createObjectURLMock.mock.calls[0][0] as unknown as FakeBlob;
             expect(exportedBlob.parts).toEqual(['PACKED OUTPUT']);
             expect(exportedBlob.options).toEqual({ type: 'text/plain;charset=utf-8' });
+
+            act(() => {
+                result.current.settings.setExportSplitMaxChars(9);
+            });
+
+            buildExportOutputMock.mockResolvedValueOnce('part-one\npart-two\n');
+
+            await act(async () => {
+                await result.current.handlers.handleSave();
+            });
+
+            expect(createObjectURLMock).toHaveBeenCalledTimes(3);
         } finally {
             Object.defineProperty(globalThis, 'Blob', {
                 configurable: true,

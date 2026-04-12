@@ -1,7 +1,10 @@
 
 import React from 'react';
 import { FileNode, ProcessedFiles, ConfirmationState } from '../types';
+import { summarizeAnalysis } from '../services/analysisSummary';
 import { buildASCIITree } from '../services/fileProcessor';
+import { scanSensitiveContent } from '../services/securityScan';
+import { estimateTokens } from '../services/tokenEstimate';
 
 interface InteractionProps {
     processedData: ProcessedFiles | null;
@@ -61,8 +64,16 @@ export const useInteraction = ({
 
                     const newTreeData = filterTreeRecursive(JSON.parse(JSON.stringify(prevData.treeData)));
                     const newStructureString = buildASCIITree(newTreeData, prevData.rootName, showCharCount);
+                    const { analysisSummary, securityFindings } = summarizeAnalysis(newFileContents);
                     
-                    return { ...prevData, fileContents: newFileContents, treeData: newTreeData, structureString: newStructureString };
+                    return {
+                        ...prevData,
+                        fileContents: newFileContents,
+                        treeData: newTreeData,
+                        structureString: newStructureString,
+                        analysisSummary,
+                        securityFindings,
+                    };
                 });
                 handleShowToast(`${path} 已删除。`);
             }
@@ -78,12 +89,23 @@ export const useInteraction = ({
     const handleSaveEdit = (path: string, newContent: string) => {
         const nextLines = newContent.split('\n').length;
         const nextChars = newContent.length;
+        const nextEstimatedTokens = estimateTokens(newContent);
+        const nextSecurityFindings = scanSensitiveContent(path, newContent);
 
         setProcessedData(prev => {
             if (!prev) return null;
             const newFileContents = prev.fileContents.map(f =>
                 f.path === path
-                    ? { ...f, content: newContent, stats: { lines: nextLines, chars: nextChars } }
+                    ? {
+                        ...f,
+                        content: newContent,
+                        stats: {
+                            lines: nextLines,
+                            chars: nextChars,
+                            estimatedTokens: nextEstimatedTokens,
+                        },
+                        securityFindings: nextSecurityFindings,
+                    }
                     : f
             );
 
@@ -105,8 +127,16 @@ export const useInteraction = ({
 
             const newTreeData = updateTreeRecursive(prev.treeData);
             const newStructureString = buildASCIITree(newTreeData, prev.rootName, showCharCount);
+            const { analysisSummary, securityFindings } = summarizeAnalysis(newFileContents);
 
-            return { ...prev, fileContents: newFileContents, treeData: newTreeData, structureString: newStructureString };
+            return {
+                ...prev,
+                fileContents: newFileContents,
+                treeData: newTreeData,
+                structureString: newStructureString,
+                analysisSummary,
+                securityFindings,
+            };
         });
         setEditingPath(null);
     };
@@ -144,12 +174,15 @@ export const useInteraction = ({
             
             // Regenerate structure string
             const newStructureString = buildASCIITree(newTreeData, prevData.rootName, showCharCount);
+            const { analysisSummary, securityFindings } = summarizeAnalysis(newFileContents);
 
             return {
                 ...prevData,
                 fileContents: newFileContents,
                 treeData: newTreeData,
-                structureString: newStructureString
+                structureString: newStructureString,
+                analysisSummary,
+                securityFindings,
             };
         });
     };

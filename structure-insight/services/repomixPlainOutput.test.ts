@@ -32,13 +32,13 @@ const PROJECT_DATA: ProcessedFiles = {
             content: 'const message = "edited";\n',
             originalContent: 'const message = "original";\n',
             language: 'typescript',
-            stats: { lines: 1, chars: 26 },
+            stats: { lines: 1, chars: 26, estimatedTokens: 7 },
         },
         {
             path: 'README.md',
             content: '# Hidden\n',
             language: 'markdown',
-            stats: { lines: 1, chars: 9 },
+            stats: { lines: 1, chars: 9, estimatedTokens: 3 },
             excluded: true,
         },
     ],
@@ -47,6 +47,12 @@ const PROJECT_DATA: ProcessedFiles = {
         usesGitignorePatterns: true,
         sortsByGitChangeCount: false,
     },
+    analysisSummary: {
+        totalEstimatedTokens: 7,
+        securityFindingCount: 0,
+        scannedFileCount: 1,
+    },
+    securityFindings: [],
 };
 
 const EXPECTED_DEFAULT_OUTPUT = [
@@ -87,9 +93,9 @@ const EXPECTED_DEFAULT_OUTPUT = [
     '',
     'Notes:',
     '------',
-    "- Some files may have been excluded based on .gitignore rules and Repomix's configuration",
+    "- Some files may have been excluded based on .gitignore/.ignore rules and Repomix's configuration",
     '- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files',
-    '- Files matching patterns in .gitignore are excluded',
+    '- Files matching patterns in .gitignore or .ignore are excluded',
     '- Files matching default ignore patterns are excluded',
     '',
     '================================================================',
@@ -97,6 +103,15 @@ const EXPECTED_DEFAULT_OUTPUT = [
     '================================================================',
     'src/',
     '  app.ts',
+    '',
+    '================================================================',
+    'Repository Analysis',
+    '================================================================',
+    'Files: 1',
+    'Lines: 1',
+    'Characters: 26',
+    'Estimated Tokens: 7',
+    'Sensitive Findings: 0',
     '',
     '================================================================',
     'Files',
@@ -214,7 +229,7 @@ describe('generateRepomixPlainOutput', () => {
         );
 
         expect(output).toContain('- Files matching default ignore patterns are excluded');
-        expect(output).not.toContain('- Files matching patterns in .gitignore are excluded');
+        expect(output).not.toContain('- Files matching patterns in .gitignore or .ignore are excluded');
         expect(output).not.toContain('- Files are sorted by Git change count (files with more changes are at the bottom)');
     });
 
@@ -286,7 +301,7 @@ describe('generateRepomixPlainOutput', () => {
         );
     });
 
-    it('renders a git diff section for edited files when enabled', () => {
+    it('renders an edited changes section for modified files when enabled', () => {
         const output = generateRepomixPlainOutput(PROJECT_DATA, {
             includeFileSummary: true,
             includeDirectoryStructure: true,
@@ -297,12 +312,46 @@ describe('generateRepomixPlainOutput', () => {
         });
 
         expect(output).toContain(
-            `================================================================\nGit Diffs\n================================================================`
+            `================================================================\nEdited Changes\n================================================================`
         );
         expect(output).toContain('diff --git a/src/app.ts b/src/app.ts');
         expect(output).toContain('--- a/src/app.ts');
         expect(output).toContain('+++ b/src/app.ts');
         expect(output).toContain('-const message = "original";');
         expect(output).toContain('+const message = "edited";');
+    });
+
+    it('renders a security warning section when findings are available', () => {
+        const output = generateRepomixPlainOutput(
+            {
+                ...PROJECT_DATA,
+                analysisSummary: {
+                    totalEstimatedTokens: 7,
+                    securityFindingCount: 1,
+                    scannedFileCount: 1,
+                },
+                securityFindings: [
+                    {
+                        filePath: 'src/.env',
+                        ruleId: 'openai-api-key',
+                        severity: 'high',
+                        message: 'Potential OpenAI API key detected.',
+                        preview: 'sk-proj-abc123',
+                    },
+                ],
+            },
+            {
+                includeFileSummary: true,
+                includeDirectoryStructure: true,
+                includeFiles: true,
+                includeGitDiffs: false,
+                userProvidedHeader: '',
+                instruction: '',
+            }
+        );
+
+        expect(output).toContain('Security Warnings');
+        expect(output).toContain('[high] src/.env');
+        expect(output).toContain('Potential OpenAI API key detected.');
     });
 });

@@ -13,6 +13,7 @@ const SettingsDialog = React.lazy(() => import('./components/SettingsDialog'));
 const SearchDialog = React.lazy(() => import('./components/SearchDialog'));
 const FileRankDialog = React.lazy(() => import('./components/FileRankDialog'));
 const KeyboardShortcutsDialog = React.lazy(() => import('./components/KeyboardShortcutsDialog'));
+const SecurityFindingsDialog = React.lazy(() => import('./components/SecurityFindingsDialog'));
 
 const SuspenseFallback = () => null;
 
@@ -73,6 +74,7 @@ const App: React.FC = () => {
                     selectedFileName={state.selectedFile?.path.split('/').pop()}
                     isDark={state.isDark}
                     processedData={state.processedData}
+                    onShowSecurityFindings={() => handlers.setIsSecurityFindingsOpen(true)}
                 />
             )}
             
@@ -139,6 +141,26 @@ const App: React.FC = () => {
                         onToggleIncludeDirectoryStructure={() => settings.setIncludeDirectoryStructure(!state.includeDirectoryStructure)}
                         includeGitDiffs={state.includeGitDiffs}
                         onToggleIncludeGitDiffs={() => settings.setIncludeGitDiffs(!state.includeGitDiffs)}
+                        exportFormat={state.exportFormat}
+                        onSetExportFormat={settings.setExportFormat}
+                        includePatterns={state.includePatterns}
+                        onSetIncludePatterns={settings.setIncludePatterns}
+                        ignorePatterns={state.ignorePatterns}
+                        onSetIgnorePatterns={settings.setIgnorePatterns}
+                        useDefaultPatterns={state.useDefaultPatterns}
+                        onToggleUseDefaultPatterns={() => settings.setUseDefaultPatterns(!state.useDefaultPatterns)}
+                        useGitignore={state.useGitignore}
+                        onToggleUseGitignore={() => settings.setUseGitignore(!state.useGitignore)}
+                        includeEmptyDirectories={state.includeEmptyDirectories}
+                        onToggleIncludeEmptyDirectories={() => settings.setIncludeEmptyDirectories(!state.includeEmptyDirectories)}
+                        showLineNumbers={state.showLineNumbers}
+                        onToggleShowLineNumbers={() => settings.setShowLineNumbers(!state.showLineNumbers)}
+                        removeEmptyLines={state.removeEmptyLines}
+                        onToggleRemoveEmptyLines={() => settings.setRemoveEmptyLines(!state.removeEmptyLines)}
+                        truncateBase64={state.truncateBase64}
+                        onToggleTruncateBase64={() => settings.setTruncateBase64(!state.truncateBase64)}
+                        exportSplitMaxChars={state.exportSplitMaxChars}
+                        onSetExportSplitMaxChars={settings.setExportSplitMaxChars}
                         exportHeaderText={state.exportHeaderText}
                         onSetExportHeaderText={settings.setExportHeaderText}
                         exportInstructionText={state.exportInstructionText}
@@ -153,6 +175,17 @@ const App: React.FC = () => {
                     <KeyboardShortcutsDialog
                         isOpen={state.isShortcutsOpen}
                         onClose={() => handlers.setIsShortcutsOpen(false)}
+                    />
+                    </React.Suspense>
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
+                {state.isSecurityFindingsOpen && (
+                    <React.Suspense fallback={<SuspenseFallback />}>
+                    <SecurityFindingsDialog
+                        isOpen={state.isSecurityFindingsOpen}
+                        onClose={() => handlers.setIsSecurityFindingsOpen(false)}
+                        findings={state.processedData?.securityFindings ?? []}
                     />
                     </React.Suspense>
                 )}

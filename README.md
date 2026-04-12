@@ -6,6 +6,8 @@
 
 **一个强大的浏览器端工具，用于快速分析和可视化任何代码项目的文件结构和内容。旨在帮助开发人员生成格式化的输出，便于与 AI 语言模型共享和讨论代码。**
 
+> 仓库说明：实际前端应用位于 `structure-insight/` 子目录。开发、测试和构建命令都应在该目录下运行。
+
 ---
 
 ### [**🚀 在线体验 &raquo;**](https://structure-insight-website.pages.dev/)
@@ -71,10 +73,18 @@
 
 您可以轻松地在本地运行此项目。
 
+### 仓库结构
+
+- `README.md`: 仓库入口说明
+- `structure-insight/`: Vite + React 应用源码
+- `structure-insight/public/`: PWA 资源与静态文件
+- `.github/workflows/ci.yml`: 持续集成配置
+
 **1. 克隆仓库**
 ```bash
 git clone https://github.com/yeahhe365/Structure-Insight.git
 cd Structure-Insight
+cd structure-insight
 ```
 
 **2. 安装依赖**
@@ -87,6 +97,15 @@ npm install
 npm run dev
 ```
 应用将在 `http://localhost:5173` (或其他可用端口) 上启动。
+
+### 常用脚本
+
+```bash
+npm run typecheck
+npm test -- --run
+npm run build
+npm run check
+```
 
 ## 🤝 贡献 (Contributing)
 

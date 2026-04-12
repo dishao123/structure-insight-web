@@ -28,9 +28,10 @@ export const useFileProcessing = ({
 }: FileProcessingProps) => {
     const [processedData, setProcessedData] = React.useState<ProcessedFiles | null>(null);
     const [lastProcessedFiles, setLastProcessedFiles] = React.useState<File[] | null>(null);
+    const [lastEmptyDirectoryPaths, setLastEmptyDirectoryPaths] = React.useState<string[]>([]);
     const abortControllerRef = React.useRef<AbortController | null>(null);
 
-    const handleProcessing = async (files: File[], isRefresh = false, controller?: AbortController) => {
+    const handleProcessing = async (files: File[], isRefresh = false, controller?: AbortController, emptyDirectoryPaths: string[] = []) => {
         if (files.length === 0) {
             if (controller && abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
@@ -41,6 +42,7 @@ export const useFileProcessing = ({
         if (!isRefresh) {
             setProcessedData(null);
             setLastProcessedFiles(null);
+            setLastEmptyDirectoryPaths([]);
             setSelectedFilePath(null);
         }
 
@@ -50,9 +52,22 @@ export const useFileProcessing = ({
 
         setIsLoading(true);
         try {
-            const data = await processFiles(files, (msg) => setProgressMessage(msg), extractContent, maxCharsThreshold, signal);
+            const data = await processFiles(
+                files,
+                (msg) => setProgressMessage(msg),
+                extractContent,
+                maxCharsThreshold,
+                signal,
+                {
+                    useDefaultIgnorePatterns: true,
+                    useGitignorePatterns: true,
+                    includeEmptyDirectories: true,
+                    emptyDirectoryPaths,
+                }
+            );
             setProcessedData(data);
             setLastProcessedFiles(files);
+            setLastEmptyDirectoryPaths(emptyDirectoryPaths);
             if (isMobile) setMobileView('editor');
             setActiveView('structure');
         } catch (error: any) {
@@ -93,8 +108,8 @@ export const useFileProcessing = ({
         abortControllerRef.current = dropController;
 
         try {
-            const files = await processDroppedItems(e.dataTransfer.items, (msg) => setProgressMessage(msg), dropController.signal);
-            await handleProcessing(files, false, dropController);
+            const dropped = await processDroppedItems(e.dataTransfer.items, (msg) => setProgressMessage(msg), dropController.signal);
+            await handleProcessing(dropped.files, false, dropController, dropped.emptyDirectoryPaths);
         } catch (error: any) {
             if (error.name !== 'AbortError') {
                  console.error("Error processing dropped items:", error);
@@ -107,9 +122,9 @@ export const useFileProcessing = ({
         }
     };
 
-    const handleRefresh = (processFn: (files: File[], isRefresh: boolean, controller?: AbortController) => Promise<void>) => {
+    const handleRefresh = (processFn: (files: File[], isRefresh: boolean, controller?: AbortController, emptyDirectoryPaths?: string[]) => Promise<void>) => {
         if (lastProcessedFiles) {
-            processFn(lastProcessedFiles, true);
+            processFn(lastProcessedFiles, true, undefined, lastEmptyDirectoryPaths);
         }
     };
 
@@ -123,6 +138,7 @@ export const useFileProcessing = ({
         processedData,
         setProcessedData,
         lastProcessedFiles,
+        lastEmptyDirectoryPaths,
         setLastProcessedFiles,
         handleProcessing,
         handleFileSelect,
